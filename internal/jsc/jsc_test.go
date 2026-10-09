@@ -13,7 +13,7 @@ func TestSolveBadPlayer(t *testing.T) {
 	if !Available() {
 		t.Skip("node not available")
 	}
-	_, err := SolveN("var x = 1;", "fake-n-param")
+	_, err := SolveN("var x = 1;", []string{"fake-n-param"})
 	if err == nil {
 		t.Fatal("expected solver error for invalid player, got nil")
 	}

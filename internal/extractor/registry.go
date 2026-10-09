@@ -37,10 +37,20 @@ func ByKey(key string) IE {
 	return nil
 }
 
-// NewInstance returns a fresh zero instance of the same concrete type as the
-// registered prototype (extractors must not share per-extraction state).
+// NewInstance returns a fresh copy of the registered prototype (extractors
+// must not share per-extraction state). Configuration fields configured at
+// registration time are copied; the runtime `self` pointer is reset so the
+// shared lifecycle dispatches to the new instance.
 func NewInstance(proto IE) IE {
-	v := reflect.New(reflect.TypeOf(proto).Elem()).Interface()
-	ie, _ := v.(IE)
+	pt := reflect.TypeOf(proto).Elem()
+	np := reflect.New(pt)
+	np.Elem().Set(reflect.ValueOf(proto).Elem())
+	ie, ok := np.Interface().(IE)
+	if !ok {
+		return nil
+	}
+	if s, ok := ie.(interface{ SetSelf(IE) }); ok {
+		s.SetSelf(ie)
+	}
 	return ie
 }

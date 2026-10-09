@@ -7,88 +7,88 @@ import "time"
 // Options mirrors the parameters accepted by yt-dlp's YoutubeDL(params=...).
 type Options struct {
 	// Credentials
-	Username           string
-	Password           string
-	TwoFactor          string
-	VideoPassword      string
-	UseNetrc           bool
-	NetrcLocation      string
-	APUsername         string
-	APPassword         string
+	Username      string
+	Password      string
+	TwoFactor     string
+	VideoPassword string
+	UseNetrc      bool
+	NetrcLocation string
+	APUsername    string
+	APPassword    string
 
 	// Console / verbosity / simulation
-	Quiet              bool
-	NoWarnings         bool
-	ForceURL           bool
-	ForceTitle         bool
-	ForceID            bool
-	ForceThumbnail     bool
-	ForceDescription   bool
-	ForceDuration      bool
-	ForceFilename      bool
-	ForceFormat        bool
-	ForceJSON          bool
-	DumpSingleJSON     bool
-	Simulate           *bool
-	SkipDownload       bool
-	Verbose            bool
-	NoProgress         bool
+	Quiet               bool
+	NoWarnings          bool
+	ForceURL            bool
+	ForceTitle          bool
+	ForceID             bool
+	ForceThumbnail      bool
+	ForceDescription    bool
+	ForceDuration       bool
+	ForceFilename       bool
+	ForceFormat         bool
+	ForceJSON           bool
+	DumpSingleJSON      bool
+	Simulate            *bool
+	SkipDownload        bool
+	Verbose             bool
+	NoProgress          bool
 	ProgressWithNewline bool
-	Noprogress         bool
+	Noprogress          bool
 
 	// Error handling / control flow
-	IgnoreErrors       IgnoreErrorsMode
-	MaxDownloads       int
-	BreakOnExisting    bool
-	BreakOnReject      bool
-	BreakPerURL        bool
+	IgnoreErrors    IgnoreErrorsMode
+	MaxDownloads    int
+	BreakOnExisting bool
+	BreakOnReject   bool
+	BreakPerURL     bool
 
 	// Format selection
-	Format             string
-	FormatSort         []string
-	FormatSortForce    bool
-	CheckFormats       string // "", "selected", "all"
-	ListFormats        bool
-	ListFormatsTable   bool
-	PreferFreeFormats  bool
-	FinalExt           string
-	MergeOutputFormat  string
-	AllowUnplayableFormats bool
-	IgnoreNoFormatsError   bool
+	Format                    string
+	FormatSort                []string
+	FormatSortForce           bool
+	CheckFormats              string // "", "selected", "all"
+	ListFormats               bool
+	ListFormatsTable          bool
+	PreferFreeFormats         bool
+	FinalExt                  string
+	MergeOutputFormat         string
+	AllowUnplayableFormats    bool
+	IgnoreNoFormatsError      bool
 	AllowMultipleVideoStreams bool
 	AllowMultipleAudioStreams bool
 
 	// Output templates / filesystem
-	Outtmpl            map[string]string
-	OuttmplNAPlaceholder string
-	Paths              map[string]string
-	RestrictFilenames  bool
-	WindowsFilenames   bool
-	TrimFileName       int
-	UseID              bool
-	NoPart             bool
-	Overwrites         *bool
-	ContinueDL         *bool
-	Encoding           string
-	CacheDir           string
-	DownloadArchive    string
+	Outtmpl               map[string]string
+	OuttmplNAPlaceholder  string
+	Paths                 map[string]string
+	RestrictFilenames     bool
+	WindowsFilenames      bool
+	TrimFileName          int
+	UseID                 bool
+	NoPart                bool
+	Overwrites            *bool
+	ContinueDL            *bool
+	Encoding              string
+	CacheDir              string
+	DownloadArchive       string
 	ForceGenericExtractor bool
 
 	// Metadata files / sidecars
-	WriteDescription   bool
-	WriteInfoJSON      bool
-	CleanInfoJSON      *bool
-	WriteThumbnail     ThumbnailMode
-	ListThumbnails    bool
-	GetComments        bool
+	WriteDescription bool
+	WriteInfoJSON    bool
+	CleanInfoJSON    *bool
+	WriteThumbnail   ThumbnailMode
+	ListThumbnails   bool
+	GetComments      bool
 
 	// Subtitles
-	WriteSubtitles       bool
-	WriteAutoSubs        bool
-	AllSubtitles         bool
-	ListSubtitles        bool
-	SubtitlesFormat      string
-	SubtitlesLangs       []string
+	WriteSubtitles  bool
+	WriteAutoSubs   bool
+	AllSubtitles    bool
+	ListSubtitles   bool
+	SubtitlesFormat string
+	SubtitlesLangs  []string
 
 	// Playlist / entry filtering
 	PlaylistStart     int
@@ -111,47 +111,47 @@ type Options struct {
 	AllowedExtractors []string
 
 	// Networking / retries / rate limits
-	RateLimit            int64
-	ThrottledRateLimit   int64
-	Retries              int
-	FileAccessRetries    int
-	FragmentRetries      int
-	ExtractorRetries     int
-	SkipUnavailableFragments bool
-	KeepFragments        bool
+	RateLimit                   int64
+	ThrottledRateLimit          int64
+	Retries                     int
+	FileAccessRetries           int
+	FragmentRetries             int
+	ExtractorRetries            int
+	SkipUnavailableFragments    bool
+	KeepFragments               bool
 	ConcurrentFragmentDownloads int
-	BufferSize           int64
-	HTTPChunkSize        int64
-	Test                 bool
-	HTTPHeaders          map[string]string
-	Proxy                string
-	SocketTimeout        time.Duration
-	NoCheckCertificate   bool
-	PreferInsecure       bool
-	SleepIntervalRequests float64
-	SleepInterval        float64
-	MaxSleepInterval     float64
-	SleepIntervalSubtitles float64
-	GeoBypass            string
-	GeoBypassCountry     string
-	GeoBypassIPBlock     string
+	BufferSize                  int64
+	HTTPChunkSize               int64
+	Test                        bool
+	HTTPHeaders                 map[string]string
+	Proxy                       string
+	SocketTimeout               time.Duration
+	NoCheckCertificate          bool
+	PreferInsecure              bool
+	SleepIntervalRequests       float64
+	SleepInterval               float64
+	MaxSleepInterval            float64
+	SleepIntervalSubtitles      float64
+	GeoBypass                   string
+	GeoBypassCountry            string
+	GeoBypassIPBlock            string
 
 	// Extraction / site behaviour
-	DefaultSearch     string
-	DynamicMPD        bool
-	ExtractorArgs     map[string][]string
-	LiveFromStart     bool
-	WaitingForVideo   *[2]float64
-	MarkWatched       bool
+	DefaultSearch   string
+	DynamicMPD      bool
+	ExtractorArgs   map[string][]string
+	LiveFromStart   bool
+	WaitingForVideo *[2]float64
+	MarkWatched     bool
 
 	// Download ranges / external tools
-	ExternalDownloader      map[string]string
-	ExternalDownloaderArgs  map[string][]string
-	FFmpegLocation          string
-	PostprocessorArgs       map[string][]string
-	Postprocessors          []PostprocessorSpec
-	Fixup                   string
-	KeepVideo               bool
+	ExternalDownloader     map[string]string
+	ExternalDownloaderArgs map[string][]string
+	FFmpegLocation         string
+	PostprocessorArgs      map[string][]string
+	Postprocessors         []PostprocessorSpec
+	Fixup                  string
+	KeepVideo              bool
 
 	// User agent / referer (folded into HTTPHeaders by the CLI)
 	UserAgent string
@@ -182,34 +182,34 @@ const (
 // PostprocessorSpec is a serialized postprocessor request
 // (equivalent of yt-dlp's `params['postprocessors']` entries).
 type PostprocessorSpec struct {
-	Key    string
-	When   string
+	Key     string
+	When    string
 	Options map[string]any
 }
 
 // DefaultOptions returns the yt-dlp compatible defaults.
 func DefaultOptions() *Options {
 	o := &Options{
-		Quiet:                    false,
-		NoWarnings:               false,
-		IgnoreErrors:             IgnoreOnlyDownload,
-		ListFormatsTable:         true,
-		SubtitlesFormat:          "best",
-		PlaylistStart:            1,
-		Retries:                  10,
-		FileAccessRetries:        3,
-		FragmentRetries:           10,
-		ExtractorRetries:         3,
-		SkipUnavailableFragments: true,
+		Quiet:                       false,
+		NoWarnings:                  false,
+		IgnoreErrors:                IgnoreOnlyDownload,
+		ListFormatsTable:            true,
+		SubtitlesFormat:             "best",
+		PlaylistStart:               1,
+		Retries:                     10,
+		FileAccessRetries:           3,
+		FragmentRetries:             10,
+		ExtractorRetries:            3,
+		SkipUnavailableFragments:    true,
 		ConcurrentFragmentDownloads: 1,
-		BufferSize:               1024,
-		DynamicMPD:               true,
-		GeoBypass:                "default",
-		OuttmplNAPlaceholder:     "NA",
-		Outtmpl:                  map[string]string{"default": "%(title)s [%(id)s].%(ext)s"},
-		ExtractorArgs:            map[string][]string{},
-		PostprocessorArgs:        map[string][]string{},
-		AllowedExtractors:        []string{"default"},
+		BufferSize:                  1024,
+		DynamicMPD:                  true,
+		GeoBypass:                   "default",
+		OuttmplNAPlaceholder:        "NA",
+		Outtmpl:                     map[string]string{"default": "%(title)s [%(id)s].%(ext)s"},
+		ExtractorArgs:               map[string][]string{},
+		PostprocessorArgs:           map[string][]string{},
+		AllowedExtractors:           []string{"default"},
 	}
 	return o
 }

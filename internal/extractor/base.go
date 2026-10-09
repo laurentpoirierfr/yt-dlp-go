@@ -18,12 +18,16 @@ import (
 // Base implements the shared machinery of yt-dlp's InfoExtractor.
 // Concrete extractors embed it and implement RealExtract.
 type Base struct {
-	downloader       Downloader
-	ready            bool
-	xForwardedForIP  string
-	videoID          string
-	initializedOnce  bool
-	firstWebpageReq  bool
+	downloader      Downloader
+	ready           bool
+	xForwardedForIP string
+	videoID         string
+	initializedOnce bool
+	firstWebpageReq bool
+	// self points at the concrete extractor instance so that the shared
+	// Extract lifecycle can dispatch to its RealExtract (Go has no virtual
+	// methods). It is set by NewInstance/SetSelf.
+	self IE
 
 	// ValidURLRe is the URL pattern; suitable() matches it against the start
 	// of the URL (regex.match semantics). Nil means "never matches"
@@ -116,6 +120,9 @@ func (b *Base) Initialize() error {
 	return nil
 }
 
+// SetSelf records the concrete extractor instance for method dispatch.
+func (b *Base) SetSelf(ie IE) { b.self = ie }
+
 // Extract is the public entry point: initialize, report, then RealExtract.
 func (b *Base) Extract(u string) (*infodict.InfoDict, error) {
 	if err := b.Initialize(); err != nil {
@@ -123,6 +130,9 @@ func (b *Base) Extract(u string) (*infodict.InfoDict, error) {
 	}
 	b.ToScreen("Extracting URL: %s", u)
 	b.videoID = b.MatchID(u)
+	if b.self != nil {
+		return b.self.RealExtract(u)
+	}
 	return b.RealExtract(u)
 }
 

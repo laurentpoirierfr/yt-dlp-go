@@ -136,12 +136,12 @@ func LoadNetscapeCookies(path string) (*CookieStore, error) {
 			exp = time.Unix(expires, 0)
 		}
 		store.cookies[cookieKey(domain, fields[2], fields[5])] = Cookie{
-			Domain:  domain,
-			Path:    fields[2],
-			Secure:  fields[3] == "TRUE",
-			Expires: exp,
-			Name:    fields[5],
-			Value:   fields[6],
+			Domain:   domain,
+			Path:     fields[2],
+			Secure:   fields[3] == "TRUE",
+			Expires:  exp,
+			Name:     fields[5],
+			Value:    fields[6],
 			HTTPOnly: strings.HasPrefix(sc.Text(), "#HttpOnly_"),
 		}
 	}

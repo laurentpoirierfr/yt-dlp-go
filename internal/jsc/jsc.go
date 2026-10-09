@@ -36,9 +36,9 @@ type Request struct {
 
 // Response is the result for one request.
 type Response struct {
-	Type ChallengeType
-	Data string
-	Err  string
+	Type    ChallengeType
+	Results map[string]string // challenge -> solved value
+	Err     string
 }
 
 // available reports whether node was found at init time.
@@ -64,11 +64,11 @@ func Available() bool { return nodePath != "" }
 func RuntimeInfo() (string, string) { return nodePath, nodeVersion }
 
 type stdinData struct {
-	Type            string        `json:"type"`
-	Player          string        `json:"player"`
-	Requests        []stdinReq    `json:"requests"`
-	OutputPreprocd  bool          `json:"output_preprocessed,omitempty"`
-	PreprocdPlayer  string        `json:"preprocessed_player,omitempty"`
+	Type           string     `json:"type"`
+	Player         string     `json:"player"`
+	Requests       []stdinReq `json:"requests"`
+	OutputPreprocd bool       `json:"output_preprocessed,omitempty"`
+	PreprocdPlayer string     `json:"preprocessed_player,omitempty"`
 }
 
 type stdinReq struct {
@@ -77,15 +77,31 @@ type stdinReq struct {
 }
 
 type stdoutData struct {
-	Type      string         `json:"type"`
-	Error     string         `json:"error"`
-	Responses []stdoutResp   `json:"responses"`
+	Type      string       `json:"type"`
+	Error     string       `json:"error"`
+	Responses []stdoutResp `json:"responses"`
 }
 
 type stdoutResp struct {
-	Type  string `json:"type"`
-	Data  string `json:"data"`
-	Error string `json:"error"`
+	Type  string          `json:"type"`
+	Data  json.RawMessage `json:"data"`
+	Error string          `json:"error"`
+}
+
+// parseData accepts either {challenge: result} or a plain string.
+func parseData(raw json.RawMessage) (map[string]string, error) {
+	if len(raw) == 0 {
+		return map[string]string{}, nil
+	}
+	var m map[string]string
+	if err := json.Unmarshal(raw, &m); err == nil {
+		return m, nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return nil, fmt.Errorf("unexpected scalar solver data %q", s)
+	}
+	return m, nil
 }
 
 // Solve runs the embedded solver scripts against the given player source and
@@ -142,41 +158,82 @@ func Solve(player string, requests []Request) ([]Response, error) {
 		if i < len(requests) {
 			typ = requests[i].Type
 		}
-		responses = append(responses, Response{Type: typ, Data: r.Data, Err: r.Error})
+		results, perr := parseData(r.Data)
+		resp := Response{Type: typ, Results: results, Err: r.Error}
+		if perr != nil && resp.Err == "" {
+			resp.Err = perr.Error()
+		}
+		responses = append(responses, resp)
 	}
 	return responses, nil
 }
 
-// SolveN solves a single n-parameter challenge.
-func SolveN(player, nParam string) (string, error) {
-	resps, err := Solve(player, []Request{{Type: TypeN, Challenges: []string{nParam}}})
+// SolveN solves n-parameter challenges in bulk and returns challenge→result.
+func SolveN(player string, challenges []string) (map[string]string, error) {
+	if len(challenges) == 0 {
+		return nil, nil
+	}
+	resps, err := Solve(player, []Request{{Type: TypeN, Challenges: challenges}})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if len(resps) != 1 {
-		return "", fmt.Errorf("expected 1 response, got %d", len(resps))
+		return nil, fmt.Errorf("expected 1 response, got %d", len(resps))
 	}
 	if resps[0].Err != "" {
-		return "", fmt.Errorf("n challenge failed: %s", resps[0].Err)
+		return nil, fmt.Errorf("n challenge failed: %s", resps[0].Err)
 	}
-	return resps[0].Data, nil
+	return resps[0].Results, nil
 }
 
-// SolveSig solves a single signature challenge.
-func SolveSig(player, sig string, parts []string) (string, error) {
-	challenges := []string{sig}
-	challenges = append(challenges, parts...)
-	resps, err := Solve(player, []Request{{Type: TypeSig, Challenges: challenges}})
+// SigSpec derives the index permutation from a solved probe string.
+// probe = chr(0)..chr(len-1); solved[i] gives the source index.
+func SolveSigSpec(player string, lengths []int) (map[int][]int, error) {
+	probes := make([]string, 0, len(lengths))
+	for _, l := range lengths {
+		buf := make([]rune, l)
+		for i := 0; i < l; i++ {
+			buf[i] = rune(i)
+		}
+		probes = append(probes, string(buf))
+	}
+	if len(probes) == 0 {
+		return nil, nil
+	}
+	resps, err := Solve(player, []Request{{Type: TypeSig, Challenges: probes}})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if len(resps) != 1 {
-		return "", fmt.Errorf("expected 1 response, got %d", len(resps))
+		return nil, fmt.Errorf("expected 1 response, got %d", len(resps))
 	}
 	if resps[0].Err != "" {
-		return "", fmt.Errorf("sig challenge failed: %s", resps[0].Err)
+		return nil, fmt.Errorf("sig challenge failed: %s", resps[0].Err)
 	}
-	return resps[0].Data, nil
+	out := map[int][]int{}
+	for probe, solved := range resps[0].Results {
+		if len(solved) != len(probe) {
+			return nil, fmt.Errorf("sig probe length mismatch: %d != %d", len(solved), len(probe))
+		}
+		spec := make([]int, len(solved))
+		for i, c := range solved {
+			spec[i] = int(c)
+		}
+		out[len(probe)] = spec
+	}
+	return out, nil
+}
+
+// ApplySig applies a signature index spec to an encrypted signature.
+func ApplySig(sig string, spec []int) string {
+	b := make([]byte, len(spec))
+	for i, idx := range spec {
+		if idx < 0 || idx >= len(sig) {
+			return ""
+		}
+		b[i] = sig[idx]
+	}
+	return string(b)
 }
 
 var stderrNoise = []*regexp.Regexp{

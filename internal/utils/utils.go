@@ -83,6 +83,12 @@ func StrOrNone(v any) *string {
 	case string:
 		s := x
 		return &s
+	case json.Number:
+		s := x.String()
+		return &s
+	case int:
+		s := strconv.Itoa(x)
+		return &s
 	case float64:
 		s := strconv.FormatFloat(x, 'f', -1, 64)
 		return &s
@@ -93,13 +99,27 @@ func StrOrNone(v any) *string {
 	return nil
 }
 
-func int64Ptr(v int64) *int64    { return &v }
+func int64Ptr(v int64) *int64       { return &v }
 func float64Ptr(v float64) *float64 { return &v }
 
 // Str returns the string or "".
 func Str(v any) string {
-	if s, ok := v.(string); ok {
-		return s
+	switch x := v.(type) {
+	case string:
+		return x
+	case json.Number:
+		return x.String()
+	case int:
+		return strconv.Itoa(x)
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case bool:
+		if x {
+			return "True"
+		}
+		return "False"
 	}
 	return ""
 }
@@ -167,7 +187,7 @@ func TraverseList(v any, path string) []any {
 var (
 	reDurationClock = regexp.MustCompile(`^(?:(?:(?:(\d+):)?(\d+):)?(\d+):)?(\d{1,2})(?:[.:](\d+))?Z?$`)
 	reDurationHuman = regexp.MustCompile(`(?i)P?(?:(\d+)\s*y(?:ears?)?,?\s*)?(?:(\d+)\s*m(?:onths?)?,?\s*)?(?:(\d+)\s*w(?:eeks?)?,?\s*)?(?:(\d+)\s*d(?:ays?)?,?\s*)?T?(?:(\d+)\s*h(?:(?:ou)?rs?)?,?\s*)?(?:(\d+)\s*m(?:in(?:ute)?s?)?,?\s*)?(?:(\d+)(?:\.\d+)?\s*s(?:ec(?:ond)?s?)?)?Z?$`)
-	reDurationHMS    = regexp.MustCompile(`(?i)^(?:(\d+[.:]\d+)\s*(?:hours?)|(\d+[.:]\d+)\s*(?:mins?\.?|minutes?))Z?$`)
+	reDurationHMS   = regexp.MustCompile(`(?i)^(?:(\d+[.:]\d+)\s*(?:hours?)|(\d+[.:]\d+)\s*(?:mins?\.?|minutes?))Z?$`)
 )
 
 // ParseDuration parses yt-dlp duration strings ("1:23:45", "3:45.5", ISO8601).
@@ -384,7 +404,7 @@ func stripVersionZeros(s string) string {
 func isDigit(b byte) bool { return b >= '0' && b <= '9' }
 
 var (
-	reKnownExt = regexp.MustCompile(`(?i)\.(avif|webm|flv|f4v|f4a|f4b|mov|m4v|mp4|m4a|m4b|3gp|3g2|flac|mka|aiff?|au|m3u8|mpd|ts|wmv|avi|mp3|m4v|m4b|ogg|ogv|wav|aac|m3u|nsv|ra|rm|rmvb|amf|swf|wma|vob|dirac|roq|ivr|fli|gl|yuv|dv|vob|tga|bmp)$`)
+	reKnownExt   = regexp.MustCompile(`(?i)\.(avif|webm|flv|f4v|f4a|f4b|mov|m4v|mp4|m4a|m4b|3gp|3g2|flac|mka|aiff?|au|m3u8|mpd|ts|wmv|avi|mp3|m4v|m4b|ogg|ogv|wav|aac|m3u|nsv|ra|rm|rmvb|amf|swf|wma|vob|dirac|roq|ivr|fli|gl|yuv|dv|vob|tga|bmp)$`)
 	reExtFromURL = regexp.MustCompile(`(?i)\.(avif|webm|flv|f4v|f4a|f4b|mov|m4v|mp4|m4a|m4b|3gp|3g2|flac|mka|aiff?|au|ts|wmv|avi|mp3|ogg|ogv|wav|aac|webm|mkv|mpeg|mpg)(?:$|[?#])`)
 )
 
@@ -421,12 +441,12 @@ var mimeExt = map[string]string{
 	"audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/aac": "aac",
 	"audio/ogg": "ogg", "audio/opus": "opus", "audio/flac": "flac",
 	"audio/wav": "wav", "audio/x-wav": "wav", "audio/webm": "weba",
-	"audio/vnd.dolby.dd-raw": "ac3",
+	"audio/vnd.dolby.dd-raw":        "ac3",
 	"application/vnd.apple.mpegurl": "m3u8",
-	"application/x-mpegurl": "m3u8",
-	"application/dash+xml": "mpd",
-	"application/f4m": "f4m",
-	"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+	"application/x-mpegurl":         "m3u8",
+	"application/dash+xml":          "mpd",
+	"application/f4m":               "f4m",
+	"image/jpeg":                    "jpg", "image/png": "png", "image/webp": "webp",
 	"text/html": "html", "application/json": "json", "application/xml": "xml",
 	"text/xml": "xml", "text/vtt": "vtt", "application/x-subrip": "srt",
 	"image/gif": "gif",
@@ -712,10 +732,10 @@ var (
 		"&#x27;", "'", "&#39;", "'", "&apos;", "'", "&nbsp;", " ",
 		"&#x3D;", "=", "&#61;", "=", "&#x2F;", "/", "&#47;", "/",
 	)
-	reStyleStrip = regexp.MustCompile(`(?s)<style[^>]*>.*?</style>`)
-	reScriptStrip = regexp.MustCompile(`(?s)<script[^>]*>.*?</script>`)
-	reTagAll             = regexp.MustCompile(`<[^>]+>`)
-	reCleanHTMLSpaces    = regexp.MustCompile(`\s+`)
+	reStyleStrip      = regexp.MustCompile(`(?s)<style[^>]*>.*?</style>`)
+	reScriptStrip     = regexp.MustCompile(`(?s)<script[^>]*>.*?</script>`)
+	reTagAll          = regexp.MustCompile(`<[^>]+>`)
+	reCleanHTMLSpaces = regexp.MustCompile(`\s+`)
 )
 
 // UnescapeHTML decodes common HTML entities.

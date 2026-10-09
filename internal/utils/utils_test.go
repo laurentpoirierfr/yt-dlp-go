@@ -4,18 +4,18 @@ import "testing"
 
 func TestSanitizeFilenameDefault(t *testing.T) {
 	cases := map[string]string{
-		"  hello  ":    "  hello  ",
-		"a_b__c":       "a_b__c",
-		".hidden":      ".hidden",
-		"-lead":        "-lead",
-		"foo/bar:baz":  "foo⧸bar：baz",
-		"1:23:45 x":    "1_23_45 x",
-		`q"uery?*<>|`:  "q＂uery？＊＜＞｜",
-		"__init__":     "__init__",
-		"test.mp4 ":    "test.mp4 ",
-		"  ":           "  ",
-		"Ünïcödé":      "Ünïcödé",
-		"":             "",
+		"  hello  ":   "  hello  ",
+		"a_b__c":      "a_b__c",
+		".hidden":     ".hidden",
+		"-lead":       "-lead",
+		"foo/bar:baz": "foo⧸bar：baz",
+		"1:23:45 x":   "1_23_45 x",
+		`q"uery?*<>|`: "q＂uery？＊＜＞｜",
+		"__init__":    "__init__",
+		"test.mp4 ":   "test.mp4 ",
+		"  ":          "  ",
+		"Ünïcödé":     "Ünïcödé",
+		"":            "",
 	}
 	for in, want := range cases {
 		if got := SanitizeFilename(in); got != want {
@@ -26,17 +26,17 @@ func TestSanitizeFilenameDefault(t *testing.T) {
 
 func TestSanitizeFilenameRestricted(t *testing.T) {
 	cases := map[string]string{
-		"  hello  ":    "hello",
-		"a_b__c":       "a_b__c",
-		".hidden":      ".hidden",
-		"-lead":        "-lead",
-		"foo/bar:baz":  "foo_bar_-baz",
-		"1:23:45 x":    "1_23_45_x",
-		`q"uery?*<>|`:  "query",
-		"__init__":     "__init__",
-		"test.mp4 ":    "test.mp4",
-		"  ":           "_",
-		"Ünïcödé":      "Unicode",
+		"  hello  ":   "hello",
+		"a_b__c":      "a_b__c",
+		".hidden":     ".hidden",
+		"-lead":       "-lead",
+		"foo/bar:baz": "foo_bar_-baz",
+		"1:23:45 x":   "1_23_45_x",
+		`q"uery?*<>|`: "query",
+		"__init__":    "__init__",
+		"test.mp4 ":   "test.mp4",
+		"  ":          "_",
+		"Ünïcödé":     "Unicode",
 	}
 	for in, want := range cases {
 		if got := SanitizeFilenameRestricted(in); got != want {
@@ -67,10 +67,10 @@ func TestParseDuration(t *testing.T) {
 
 func TestParseBytes(t *testing.T) {
 	cases := map[string]int64{
-		"1024": 1024,
-		"10M":  10 << 20,
+		"1024":   1024,
+		"10M":    10 << 20,
 		"1.5MiB": int64(1.5 * (1 << 20)),
-		"2G":   2 << 30,
+		"2G":     2 << 30,
 	}
 	for in, want := range cases {
 		got, ok := ParseBytes(in)

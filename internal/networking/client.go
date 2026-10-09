@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -95,6 +96,12 @@ func (c *Client) ApplyOptions(proxy string, timeout time.Duration, noCheckCert b
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 	}
+	if c.Timeout > 0 {
+		transport.DialContext = (&net.Dialer{Timeout: c.Timeout, KeepAlive: 30 * time.Second}).DialContext
+		transport.ResponseHeaderTimeout = c.Timeout
+		transport.TLSHandshakeTimeout = c.Timeout
+		transport.IdleConnTimeout = 90 * time.Second
+	}
 	if proxy != "" && proxy != "__noproxy__" {
 		pu, err := url.Parse(normalizeProxy(proxy))
 		if err != nil {
@@ -110,8 +117,9 @@ func (c *Client) ApplyOptions(proxy string, timeout time.Duration, noCheckCert b
 	}
 	c.http = &http.Client{
 		Transport: transport,
-		Timeout:   c.Timeout,
-		Jar:       c.Jar,
+		// Do NOT set an overall Timeout: it would abort large body reads.
+		// The transport's dial/header/TLS timeouts implement --socket-timeout.
+		Jar: c.Jar,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return errors.New("stopped after 10 redirects")
@@ -191,10 +199,9 @@ func (c *Client) Send(req *Request, expectStatus ...int) (*Response, error) {
 	for k, v := range req.Headers {
 		httpReq.Header.Set(k, v)
 	}
-	if _, ok := httpReq.Header["Accept-Encoding"]; !ok {
-		// let Go handle compression transparently
-		httpReq.Header.Set("Accept-Encoding", "gzip, deflate")
-	}
+	// Do not set Accept-Encoding ourselves: Go's Transport adds "gzip" and
+	// transparently decompresses only when it controls the header. Setting it
+	// manually would leave the body compressed.
 	if req.Data != nil && httpReq.Header.Get("Content-Type") == "" {
 		httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
@@ -207,8 +214,6 @@ func (c *Client) Send(req *Request, expectStatus ...int) (*Response, error) {
 	httpClient := *client
 	if req.Timeout > 0 {
 		httpClient.Timeout = req.Timeout
-	} else if c.Timeout > 0 {
-		httpClient.Timeout = c.Timeout
 	}
 
 	resp, err := httpClient.Do(httpReq)
