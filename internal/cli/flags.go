@@ -133,6 +133,7 @@ func newRootCmd(o *options.Options) *cobra.Command {
 	// Filesystem behaviour
 	f.BoolVar(&continueDL, "continue", false, "Resume partially downloaded files")
 	f.BoolVar(&forceOver, "force-overwrites", false, "Overwrite all video and metadata files")
+	f.StringVar(&o.DownloadArchive, "download-archive", o.DownloadArchive, "Download videos listed in file, and write each downloaded one to it")
 
 	// Playlist
 	f.BoolVar(&o.NoPlaylist, "no-playlist", false, "Download only the video if a URL refers to both")

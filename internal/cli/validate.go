@@ -25,11 +25,6 @@ var unsupportedFlags = map[string]string{
 	"force-generic-extractor": "forcing the generic extractor is not implemented",
 
 	// Error handling / control flow
-	"break-on-existing": "the download archive is not implemented",
-	"break-on-reject":   "entry filtering is not implemented",
-	"break-per-input":   "per-input break is not implemented",
-
-	// Networking
 	"fragment-retries":     "fragmented downloads are not implemented",
 	"extractor-retries":    "extractor retries are not implemented",
 	"limit-rate":           "rate limiting is not implemented",
@@ -37,8 +32,7 @@ var unsupportedFlags = map[string]string{
 	"concurrent-fragments": "fragmented downloads are not implemented",
 
 	// Playlist ordering
-	"playlist-reverse": "playlist reordering is not implemented",
-	"playlist-random":  "playlist randomization is not implemented",
+	"break-on-reject": "entry filtering is not implemented",
 
 	// Metadata sidecars
 	"write-thumbnail":      "thumbnail writing is not implemented yet",

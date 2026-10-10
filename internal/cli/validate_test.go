@@ -23,10 +23,17 @@ func TestValidateUnsupportedRejects(t *testing.T) {
 }
 
 func TestValidateUnsupportedAcceptsImplemented(t *testing.T) {
-	cmd := newRootCmd(options.DefaultOptions())
-	cmd.SetArgs([]string{"--restrict-filenames", "--ignore-errors", "--force-overwrites", "URL"})
-	if err := cmd.Execute(); err != nil {
-		t.Errorf("Execute() = %v, want nil", err)
+	cases := [][]string{
+		{"--restrict-filenames", "--ignore-errors", "--force-overwrites", "URL"},
+		{"--playlist-reverse", "--playlist-random", "URL"},
+		{"--break-on-existing", "--break-per-input", "--download-archive", "archive.txt", "URL"},
+	}
+	for _, args := range cases {
+		cmd := newRootCmd(options.DefaultOptions())
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			t.Errorf("Execute(%v) = %v, want nil", args, err)
+		}
 	}
 }
 
