@@ -160,6 +160,8 @@ hauteur du terminal et se compose de :
   occupent l'espace restant.
 - **Pied de page** : compteurs (terminées / échouées) et rappel des raccourcis.
 
+![Interface terminal de yt-dlp-go](./assets/terminal.png)
+
 ```console
 # Lancée automatiquement sur un terminal interactif
 yt-dlp-go "URL"
