@@ -196,7 +196,7 @@ func DefaultOptions() *Options {
 	o := &Options{
 		Quiet:                       false,
 		NoWarnings:                  false,
-		IgnoreErrors:                IgnoreOnlyDownload,
+		IgnoreErrors:                IgnoreNone,
 		ListFormatsTable:            true,
 		SubtitlesFormat:             "best",
 		PlaylistStart:               1,

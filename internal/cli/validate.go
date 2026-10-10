@@ -1,0 +1,70 @@
+package cli
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
+
+// unsupportedFlags lists flags that are accepted for yt-dlp compatibility but
+// whose behaviour is not implemented yet. Setting one explicitly is reported as
+// an error instead of being silently ignored.
+var unsupportedFlags = map[string]string{
+	// Post-processing
+	"merge-output-format": "merging always stream-copies into the format's native container",
+	"remux-video":         "remuxing is not implemented yet",
+
+	// Format selection extras
+	"allow-unplayable-formats": "unsupported format override is not implemented",
+	"ignore-no-formats-error":  "no-format fallback is not implemented",
+	"check-formats":            "format checking is not implemented",
+
+	// Extraction
+	"force-generic-extractor": "forcing the generic extractor is not implemented",
+
+	// Error handling / control flow
+	"break-on-existing": "the download archive is not implemented",
+	"break-on-reject":   "entry filtering is not implemented",
+	"break-per-input":   "per-input break is not implemented",
+
+	// Networking
+	"fragment-retries":     "fragmented downloads are not implemented",
+	"extractor-retries":    "extractor retries are not implemented",
+	"limit-rate":           "rate limiting is not implemented",
+	"http-chunk-size":      "chunked HTTP downloads are not implemented",
+	"concurrent-fragments": "fragmented downloads are not implemented",
+
+	// Playlist ordering
+	"playlist-reverse": "playlist reordering is not implemented",
+	"playlist-random":  "playlist randomization is not implemented",
+
+	// Metadata sidecars
+	"write-thumbnail":      "thumbnail writing is not implemented yet",
+	"write-all-thumbnails": "thumbnail writing is not implemented yet",
+	"write-info-json":      "info.json sidecar writing is not implemented yet",
+	"write-description":    "description sidecar writing is not implemented yet",
+
+	// Subtitles
+	"write-subs":      "subtitle writing is not implemented yet",
+	"write-auto-subs": "subtitle writing is not implemented yet",
+	"all-subs":        "subtitle writing is not implemented yet",
+	"sub-langs":       "subtitle writing is not implemented yet",
+	"sub-format":      "subtitle writing is not implemented yet",
+}
+
+// validateUnsupported returns an error if the user explicitly set one or more
+// flags whose behaviour is not implemented.
+func validateUnsupported(cmd *cobra.Command) error {
+	var problems []string
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		if reason, ok := unsupportedFlags[f.Name]; ok {
+			problems = append(problems, fmt.Sprintf("  --%s: %s", f.Name, reason))
+		}
+	})
+	if len(problems) == 0 {
+		return nil
+	}
+	return fmt.Errorf("unsupported option(s):\n%s", strings.Join(problems, "\n"))
+}
