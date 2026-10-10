@@ -24,6 +24,7 @@ func newRootCmd(o *options.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "yt-dlp-go [OPTIONS] URL [URL...]",
 		Short:         "A Go port of yt-dlp",
+		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
