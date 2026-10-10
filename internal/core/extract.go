@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	mathrand "math/rand"
 	"strings"
 	"time"
 
@@ -23,6 +24,9 @@ func (y *YoutubeDL) ExtractInfo(url string, download bool) (*infodict.InfoDict, 
 		return nil, &extractor.UnsupportedURLError{URL: url}
 	}
 	ie.SetDownloader(y)
+	if ps, ok := ie.(interface{ SetPlaylistMaxEntries(int) }); ok {
+		ps.SetPlaylistMaxEntries(y.playlistMaxEntries())
+	}
 	result, err := ie.Extract(url)
 	if err != nil {
 		return nil, err
@@ -31,6 +35,39 @@ func (y *YoutubeDL) ExtractInfo(url string, download bool) (*infodict.InfoDict, 
 		return nil, fmt.Errorf("extractor returned no result for %s", url)
 	}
 	return y.processIeResult(result, download, map[string]string{"original_url": url}, 0)
+}
+
+// playlistMaxEntries computes how many playlist entries the extractor must
+// collect (0 = everything) so that pagination stops early for windows that
+// only cover the beginning of a playlist.
+func (y *YoutubeDL) playlistMaxEntries() int {
+	it := y.opts.PlaylistItems
+	if it != "" {
+		ranges, err := parsePlaylistItems(it)
+		if err != nil {
+			return 0
+		}
+		max := 0
+		for _, r := range ranges {
+			if r.endUnbounded || r.step < 0 || r.start < 0 || r.end < 0 || r.start == 0 {
+				return 0
+			}
+			if r.end > max {
+				max = r.end
+			}
+			if r.start > max {
+				max = r.start
+			}
+		}
+		return max
+	}
+	if y.opts.PlaylistReverse || y.opts.PlaylistRandom {
+		return 0
+	}
+	if y.opts.PlaylistEnd > 0 {
+		return y.opts.PlaylistEnd
+	}
+	return 0
 }
 
 func (y *YoutubeDL) processIeResult(result *infodict.InfoDict, download bool, extra map[string]string, depth int) (*infodict.InfoDict, error) {
@@ -79,6 +116,9 @@ func (y *YoutubeDL) extractInfoNoProcess(result *infodict.InfoDict, extra map[st
 		return nil, &extractor.UnsupportedURLError{URL: result.URL}
 	}
 	ie.SetDownloader(y)
+	if ps, ok := ie.(interface{ SetPlaylistMaxEntries(int) }); ok {
+		ps.SetPlaylistMaxEntries(y.playlistMaxEntries())
+	}
 	return ie.Extract(result.URL)
 }
 
@@ -118,6 +158,12 @@ func (y *YoutubeDL) processPlaylist(result *infodict.InfoDict, download bool, ex
 		if err != nil {
 			return nil, err
 		}
+		if y.opts.PlaylistReverse {
+			reverseItems(selected)
+		}
+		if y.opts.PlaylistRandom {
+			shuffleItems(selected)
+		}
 		count := len(selected)
 		y.ToScreen("[download] Downloading playlist: %s", orDefault(result.Title, result.ID))
 		y.ToScreen("[download] Playlist %s: Downloading %d videos", orDefault(result.Title, result.ID), count)
@@ -129,12 +175,33 @@ func (y *YoutubeDL) processPlaylist(result *infodict.InfoDict, download bool, ex
 			if result.ID != "" {
 				entry.PlaylistID = result.ID
 			}
+			wasArchived := y.opts.DownloadArchive != "" && y.inArchive(entry)
+			errorsBefore := y.Errors
 			if _, err := y.processIeResult(entry, download, extra, depth+1); err != nil {
 				y.ReportError("%v", err)
+			}
+			if wasArchived && y.opts.BreakOnExisting {
+				y.ToScreen("[download] Stopping because of --break-on-existing")
+				break
+			}
+			if y.opts.BreakPerURL && y.Errors > errorsBefore {
+				break
 			}
 		}
 	}
 	return result, nil
+}
+
+func reverseItems(items []playlistItem) {
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
+}
+
+func shuffleItems(items []playlistItem) {
+	mathrand.New(mathrand.NewSource(time.Now().UnixNano())).Shuffle(len(items), func(i, j int) {
+		items[i], items[j] = items[j], items[i]
+	})
 }
 
 type playlistItem struct {
@@ -219,6 +286,10 @@ func (y *YoutubeDL) processInfo(info *infodict.InfoDict) error {
 	if y.opts.SkipDownload {
 		return nil
 	}
+	if y.opts.DownloadArchive != "" && !y.forceDownload(info) && y.inArchive(info) {
+		y.ToScreen("[download] %s has already been recorded in archive", archiveKey(info))
+		return nil
+	}
 	path, err := y.buildOutputPath(info)
 	if err != nil {
 		return err
@@ -232,7 +303,21 @@ func (y *YoutubeDL) processInfo(info *infodict.InfoDict) error {
 	if len(formats) == 0 {
 		formats = info.SelectedFormats
 	}
-	return y.downloader(info, formats)
+	if err := y.downloader(info, formats); err != nil {
+		return err
+	}
+	if y.opts.DownloadArchive != "" {
+		if err := y.addArchive(info); err != nil {
+			y.ReportWarning("Unable to add to archive: %v", err)
+		}
+	}
+	return nil
+}
+
+// forceDownload reports whether --force-overwrites forces scripts to go ahead
+// even if the entry is already recorded in the archive.
+func (y *YoutubeDL) forceDownload(info *infodict.InfoDict) bool {
+	return y.opts.Overwrites != nil && *y.opts.Overwrites
 }
 
 func (y *YoutubeDL) defaultFormatSpec(info *infodict.InfoDict) string {

@@ -29,6 +29,9 @@ type YoutubeDL struct {
 	playlistURL map[string]bool
 	playlistLvl int
 
+	archiveMu sync.Mutex
+	archive   map[string]bool
+
 	// statistics
 	Errors   int
 	Warnings int
