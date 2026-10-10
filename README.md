@@ -22,6 +22,7 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 | Pipeline de sélection de formats (`-f`, `-S`) | Fonctionnel |
 | Téléchargement HTTP + fusion ffmpeg | Fonctionnel |
 | Métadonnées JSON (`-j`, `-J`) | Fonctionnel |
+| Sidecar `.info.json` (`--write-info-json`) | Fonctionnel |
 | Sous-titres | Extraction oui, écriture sur disque en cours |
 | Playlists | Complet (pagination, plages/items, reverse/random, archive) |
 | Post-traitements (audio, remux) | Partiel (fusion ffmpeg seule ; `--remux-video` refusé) |
@@ -214,14 +215,18 @@ yt-dlp-go -j "URL"
 # JSON par URL (playlist entière en un objet)
 yt-dlp-go -J "URL"
 
+# Écrire un sidecar <video>.info.json à côté du fichier téléchargé
+yt-dlp-go --write-info-json "URL"
+
 # Forcer un JSON lisible
 YTDL_JSON_PRETTY=1 yt-dlp-go -j "URL"
 ```
 
-L'écriture des métadonnées sur disque (`--write-info-json`,
-`--write-description`, `--write-thumbnail`) n'est pas encore implémentée : ces
-options sont désormais **refusées explicitement** (erreur) plutôt qu'ignorées
-silencieusement.
+`--write-info-json` écrit `<lecteur>.info.json` (le dictionnaire complet de la
+vidéo) à côté du fichier médiatique, après un téléchargement réussi.
+
+`--write-description` et `--write-thumbnail` ne sont pas encore implémentés :
+ils sont **refusés explicitement** (erreur) plutôt qu'ignorés silencieusement.
 
 ## Noms et dossiers de sortie
 
@@ -387,7 +392,8 @@ Formats     -f/--format, -S/--format-sort, --format-sort-force,
             --prefer-free-formats
 Simulation  -s/--simulate, --skip-download, --no-progress, --get-url,
             --get-title, --get-id, --get-filename
-JSON        -j/--dump-json, -J/--dump-single-json, -F/--list-formats
+JSON        -j/--dump-json, -J/--dump-single-json, -F/--list-formats,
+            --write-info-json
 Erreurs     -i/--ignore-errors
 Réseau      --proxy, --socket-timeout, --user-agent, --add-header,
             --no-check-certificate, --retries, --continue, --force-overwrites
@@ -412,7 +418,7 @@ des indices négatifs nécessitent la lecture complète.
 **Reconnues pour compatibilité mais pas encore implémentées :** les définir
 provoque une erreur explicite au lieu d'être ignorées silencieusement
 (ex. `--remux-video`, `--merge-output-format`, `--limit-rate`,
-`--write-info-json`, `--write-subs`, `--playlist-reverse`, `--break-on-reject`).
+`--write-description`, `--write-thumbnail`, `--write-subs`, `--break-on-reject`).
 
 ## Architecture
 

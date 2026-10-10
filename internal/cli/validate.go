@@ -37,7 +37,6 @@ var unsupportedFlags = map[string]string{
 	// Metadata sidecars
 	"write-thumbnail":      "thumbnail writing is not implemented yet",
 	"write-all-thumbnails": "thumbnail writing is not implemented yet",
-	"write-info-json":      "info.json sidecar writing is not implemented yet",
 	"write-description":    "description sidecar writing is not implemented yet",
 
 	// Subtitles

@@ -1,6 +1,8 @@
 package core
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -141,5 +143,36 @@ func TestProcessPlaylistBreakPerInput(t *testing.T) {
 	}
 	if got := order; !reflect.DeepEqual(got, []string{"a"}) {
 		t.Errorf("order = %v, want [a] (stop after first error)", got)
+	}
+}
+
+func TestWriteInfoJSONSidecar(t *testing.T) {
+	dir := t.TempDir()
+	o := options.DefaultOptions()
+	o.WriteInfoJSON = true
+	o.Paths = map[string]string{"home": dir}
+	ydl := New(o)
+	ydl.SetDownloader(func(info *infodict.InfoDict, formats []infodict.Format) error {
+		return nil
+	})
+	info := mkVideo("vid123")
+	info.Title = "My Video"
+	if err := ydl.processInfo(info); err != nil {
+		t.Fatalf("processInfo: %v", err)
+	}
+	wantFile := filepath.Join(dir, "My Video [vid123].mp4.info.json")
+	data, err := os.ReadFile(wantFile)
+	if err != nil {
+		t.Fatalf("sidecar not written: %v", err)
+	}
+	var got infodict.InfoDict
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("sidecar is not valid JSON: %v", err)
+	}
+	if got.ID != "vid123" || got.Title != "My Video" {
+		t.Errorf("sidecar = {ID:%q Title:%q}, want vid123 / My Video", got.ID, got.Title)
+	}
+	if want := filepath.Join(dir, "My Video [vid123].mp4"); info.Filepath != want {
+		t.Errorf("Filepath = %q, want %q", info.Filepath, want)
 	}
 }
