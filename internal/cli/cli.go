@@ -18,6 +18,9 @@ import (
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/tui"
 )
 
+// Version is the build version. It is injected at release time via -ldflags.
+var Version = "dev"
+
 // Main runs the CLI with the given extractors and arguments, returning an exit
 // code.
 func Main(ies []extractor.IE, args []string) int {
