@@ -27,6 +27,7 @@ func TestValidateUnsupportedAcceptsImplemented(t *testing.T) {
 		{"--restrict-filenames", "--ignore-errors", "--force-overwrites", "URL"},
 		{"--playlist-reverse", "--playlist-random", "URL"},
 		{"--break-on-existing", "--break-per-input", "--download-archive", "archive.txt", "URL"},
+		{"--write-info-json", "--force-overwrites", "URL"},
 	}
 	for _, args := range cases {
 		cmd := newRootCmd(options.DefaultOptions())
