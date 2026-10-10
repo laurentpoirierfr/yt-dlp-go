@@ -7,6 +7,8 @@ livré sous forme d'un binaire Go unique.
 Le projet vise la compatibilité avec les options de yt-dlp et une architecture
 en packages claire (`cmd/`, `internal/`, `pkg/`).
 
+![Project](./assets/project.png)
+
 ## État du projet
 
 | Domaine | État |
