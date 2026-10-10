@@ -10,18 +10,32 @@ import (
 func TestParsePlaylistItems(t *testing.T) {
 	cases := []struct {
 		spec string
-		want []playlistRange
+		want []itemRange
 		ok   bool
 	}{
-		{"1-3", []playlistRange{{1, 3}}, true},
-		{"1,3-4,9-", []playlistRange{{1, 1}, {3, 4}, {9, 0}}, true},
-		{"-2", []playlistRange{{1, 2}}, true},
-		{"5", []playlistRange{{5, 5}}, true},
-		{"1-3, 7", []playlistRange{{1, 3}, {7, 7}}, true},
 		{"", nil, true},
+		{"5", []itemRange{{start: 5, end: 5, step: 1}}, true},
+		{"1-3", []itemRange{{start: 1, end: 3, step: 1}}, true},
+		{"1,3-4,9-", []itemRange{
+			{start: 1, end: 1, step: 1},
+			{start: 3, end: 4, step: 1},
+			{start: 9, end: 0, step: 1, endUnbounded: true},
+		}, true},
+		{"-2", []itemRange{{start: -2, end: -2, step: 1}}, true},
+		{"1:10", []itemRange{{start: 1, end: 10, step: 1}}, true},
+		{":3", []itemRange{{start: 1, end: 3, step: 1}}, true},
+		{"7:", []itemRange{{start: 7, end: 0, step: 1, endUnbounded: true}}, true},
+		{"1:10:2", []itemRange{{start: 1, end: 10, step: 2}}, true},
+		{"5:1:-1", []itemRange{{start: 5, end: 1, step: -1}}, true},
+		{"1:3,7,-5::2", []itemRange{
+			{start: 1, end: 3, step: 1},
+			{start: 7, end: 7, step: 1},
+			{start: -5, end: 0, step: 2, endUnbounded: true},
+		}, true},
 		{"3-1", nil, false},
 		{"abc", nil, false},
 		{"1..3", nil, false},
+		{"1:2:0", nil, false},
 	}
 	for _, c := range cases {
 		got, err := parsePlaylistItems(c.spec)
@@ -38,46 +52,47 @@ func TestParsePlaylistItems(t *testing.T) {
 	}
 }
 
+func indices(items []playlistItem) []int {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]int, len(items))
+	for i, it := range items {
+		out[i] = it.idx
+	}
+	return out
+}
+
 func TestSelectPlaylistEntries(t *testing.T) {
 	entries := make([]*infodict.InfoDict, 5)
 	for i := range entries {
 		entries[i] = &infodict.InfoDict{ID: string(rune('0' + i + 1))}
 	}
-	selected, err := selectPlaylistEntries(entries, 2, 4, "")
-	if err != nil {
-		t.Fatalf("selection err: %v", err)
+	cases := []struct {
+		start, end int
+		items      string
+		want       []int
+	}{
+		{2, 4, "", []int{2, 3, 4}},
+		{1, 0, "1,4", []int{1, 4}},
+		{1, 0, "4-", []int{4, 5}},
+		{1, 0, "9-", nil},
+		{1, 0, "-1", []int{5}},
+		{1, 0, "-2", []int{4}},
+		{1, 0, "1:10", []int{1, 2, 3, 4, 5}},
+		{1, 0, "1,3,5,-1", []int{1, 3, 5}},
+		{1, 0, "5:1:-1", []int{5, 4, 3, 2, 1}},
+		{1, 0, "2,4,1", []int{2, 4, 1}},
 	}
-	wantIdx := []int{2, 3, 4}
-	if len(selected) != 3 {
-		t.Fatalf("len = %d, want 3", len(selected))
-	}
-	for i, it := range selected {
-		if it.idx != wantIdx[i] {
-			t.Errorf("idx = %d, want %d", it.idx, wantIdx[i])
+	for _, c := range cases {
+		selected, err := selectPlaylistEntries(entries, c.start, c.end, c.items)
+		if err != nil {
+			t.Errorf("selectPlaylistEntries(items=%q): %v", c.items, err)
+			continue
 		}
-	}
-
-	selected, err = selectPlaylistEntries(entries, 1, 0, "1,4")
-	if err != nil {
-		t.Fatalf("items err: %v", err)
-	}
-	if len(selected) != 2 || selected[0].idx != 1 || selected[1].idx != 4 {
-		t.Errorf("items selection = %+v", selected)
-	}
-
-	selected, err = selectPlaylistEntries(entries, 1, 0, "4-")
-	if err != nil {
-		t.Fatalf("unbounded err: %v", err)
-	}
-	if len(selected) != 2 || selected[0].idx != 4 || selected[1].idx != 5 {
-		t.Errorf("unbounded selection = %+v", selected)
-	}
-
-	selected, err = selectPlaylistEntries(entries, 1, 0, "9-")
-	if err != nil {
-		t.Fatalf("out-of-range unbounded err: %v", err)
-	}
-	if len(selected) != 0 {
-		t.Errorf("out-of-range selection = %+v, want none", selected)
+		if got := indices(selected); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("selectPlaylistEntries(start=%d,end=%d,items=%q) = %v, want %v",
+				c.start, c.end, c.items, got, c.want)
+		}
 	}
 }
