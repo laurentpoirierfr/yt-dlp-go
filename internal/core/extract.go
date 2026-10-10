@@ -2,6 +2,8 @@ package core
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -114,26 +116,126 @@ func (y *YoutubeDL) processPlaylist(result *infodict.InfoDict, download bool, ex
 	y.sortThumbnails(result)
 
 	if !y.opts.NoPlaylist {
-		count := len(result.Entries)
+		selected, err := selectPlaylistEntries(result.Entries, y.opts.PlaylistStart, y.opts.PlaylistEnd, y.opts.PlaylistItems)
+		if err != nil {
+			return nil, err
+		}
+		count := len(selected)
 		y.ToScreen("[download] Downloading playlist: %s", orDefault(result.Title, result.ID))
 		y.ToScreen("[download] Playlist %s: Downloading %d videos", orDefault(result.Title, result.ID), count)
-	}
-	for i, entry := range result.Entries {
-		if entry == nil {
-			continue
-		}
-		entry = entry.Clone()
-		entry.Playlist = orDefault(result.Title, result.ID)
-		idx := i + 1
-		entry.PlaylistIndex = &idx
-		if result.ID != "" {
-			entry.PlaylistID = result.ID
-		}
-		if _, err := y.processIeResult(entry, download, extra, depth+1); err != nil {
-			y.ReportError("%v", err)
+		for _, it := range selected {
+			entry := it.entry.Clone()
+			entry.Playlist = orDefault(result.Title, result.ID)
+			idx := it.idx
+			entry.PlaylistIndex = &idx
+			if result.ID != "" {
+				entry.PlaylistID = result.ID
+			}
+			if _, err := y.processIeResult(entry, download, extra, depth+1); err != nil {
+				y.ReportError("%v", err)
+			}
 		}
 	}
 	return result, nil
+}
+
+type playlistItem struct {
+	idx   int
+	entry *infodict.InfoDict
+}
+
+// selectPlaylistEntries narrows the entries to those selected by
+// --playlist-start, --playlist-end and --playlist-items.
+func selectPlaylistEntries(entries []*infodict.InfoDict, start, end int, items string) ([]playlistItem, error) {
+	var chosen map[int]bool
+	if items != "" {
+		var err error
+		chosen, err = parsePlaylistItems(items)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var out []playlistItem
+	for i, entry := range entries {
+		if entry == nil {
+			continue
+		}
+		idx := i + 1
+		if chosen != nil {
+			if !chosen[idx] {
+				continue
+			}
+		} else if idx < start || (end > 0 && idx > end) {
+			continue
+		}
+		out = append(out, playlistItem{idx: idx, entry: entry})
+	}
+	return out, nil
+}
+
+// parsePlaylistItems parses a --playlist-items specification such as
+// "1-3,5,9-" into an integer set (1-based).
+func parsePlaylistItems(spec string) (map[int]bool, error) {
+	out := map[int]bool{}
+	for _, part := range strings.Split(spec, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		lo, hi, err := parsePlaylistRange(part)
+		if err != nil {
+			return nil, fmt.Errorf("invalid format for --playlist-items: %q", part)
+		}
+		if lo > hi {
+			return nil, fmt.Errorf("playlist end is smaller than playlist start: %q", part)
+		}
+		for n := lo; n <= hi; n++ {
+			if n > 0 {
+				out[n] = true
+			}
+		}
+	}
+	return out, nil
+}
+
+// parsePlaylistRange parses a single item token: "N", "N-M", "N-" or "-M".
+func parsePlaylistRange(tok string) (lo, hi int, err error) {
+	tok = strings.TrimSpace(tok)
+	if tok == "" {
+		return 0, 0, fmt.Errorf("empty range")
+	}
+	dash := strings.IndexByte(tok, '-')
+	if dash < 0 {
+		n, err := strconv.Atoi(tok)
+		if err != nil {
+			return 0, 0, err
+		}
+		return n, n, nil
+	}
+	left := strings.TrimSpace(tok[:dash])
+	right := strings.TrimSpace(tok[dash+1:])
+	if left == "" && right == "" {
+		return 0, 0, fmt.Errorf("empty range")
+	}
+	if left != "" {
+		lo, err = strconv.Atoi(left)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+	if right != "" {
+		hi, err = strconv.Atoi(right)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+	if left == "" {
+		lo = 1
+	}
+	if right == "" {
+		hi = math.MaxInt
+	}
+	return lo, hi, nil
 }
 
 func (y *YoutubeDL) processVideoResult(info *infodict.InfoDict, download bool) (*infodict.InfoDict, error) {

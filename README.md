@@ -402,4 +402,7 @@ YTDL_NET=1 go test ./internal/extractor/youtube/ -run TestRealExtract -v
 
 ## Licence
 
-À définir (le projet source yt-dlp est sous licence Unlicense).
+Distribué sous licence [MIT](LICENCE.md).
+Le projet source d'origine, [yt-dlp](https://github.com/yt-dlp/yt-dlp), est
+sous licence [Unlicense](https://unlicense.org/) ; ce port Go est un projet
+indépendant.

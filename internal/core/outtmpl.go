@@ -105,6 +105,8 @@ func infoField(info *infodict.InfoDict, key string) string {
 		return "NA"
 	case "playlist":
 		return info.Playlist
+	case "playlist_title":
+		return info.Playlist
 	case "playlist_index":
 		if info.PlaylistIndex != nil {
 			return fmt.Sprintf("%d", *info.PlaylistIndex)
