@@ -23,7 +23,7 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 | Téléchargement HTTP + fusion ffmpeg | Fonctionnel |
 | Métadonnées JSON (`-j`, `-J`) | Fonctionnel |
 | Sous-titres | Extraction oui, écriture sur disque en cours |
-| Playlists | Pipeline prêt, extracteur YouTube (1re page) fonctionnel |
+| Playlists | Complet (pagination, plages/items, reverse/random, archive) |
 | Post-traitements (audio, remux) | Partiel (fusion ffmpeg seule ; `--remux-video` refusé) |
 | Noms de fichiers (gabarits, `--restrict/windows/trim-filenames`) | Fonctionnel |
 | Options non implémentées | Refusées explicitement (plus de no-op silencieux) |
@@ -265,8 +265,9 @@ fichiers sont automatiquement remplacés ; `--restrict-filenames` limite à
 
 ## Parties et playlists
 
-Le pipeline de traitement des playlists est opérationnel. Exemples d'appels
-(le support natif de l'extracteur YouTube est en cours d'ajout) :
+Le pipeline de traitement des playlists est opérationnel, avec pagination
+automatique (les longues playlists sont lues page par page jusqu'à couvrir la
+fenêtre demandée) :
 
 ```console
 # Toute la playlist
@@ -286,6 +287,9 @@ yt-dlp-go -I "1,3,5,-1" "URL"    # sélection explicite (dernier = -1)
 # Ordre
 yt-dlp-go --playlist-reverse "URL"
 yt-dlp-go --playlist-random "URL"
+
+# Arrêter au premier élément déjà téléchargé
+yt-dlp-go --download-archive archive.txt --break-on-existing "URL"
 
 # Lister sans télécharger
 yt-dlp-go --flat-playlist -J "URL"
@@ -388,7 +392,9 @@ Erreurs     -i/--ignore-errors
 Réseau      --proxy, --socket-timeout, --user-agent, --add-header,
             --no-check-certificate, --retries, --continue, --force-overwrites
 Playlist    --no-playlist, --yes-playlist, --playlist-start, --playlist-end,
-            -I/--playlist-items, --flat-playlist
+            -I/--playlist-items, --playlist-reverse, --playlist-random,
+            --flat-playlist
+Archives    --download-archive, --break-on-existing, --break-per-input
 Divers      -q/--quiet, -v/--verbose, --ffmpeg-location, --tui, --no-tui
 ```
 
@@ -398,10 +404,15 @@ poursuit le traitement des URL suivantes.
 `-I/--playlist-items` accepte les plages `1:10`, les pas `1:10:2`, les indices
 négatifs (depuis la fin, ex. `-1` = dernier) et l'ancienne syntaxe `1-3`.
 
+Les longues playlists sont paginées automatiquement : avec
+`--playlist-start/end/items` ne portant que sur le début, la lecture s'arrête
+dès que la fenêtre est couverte ; `--playlist-reverse`, `--playlist-random` ou
+des indices négatifs nécessitent la lecture complète.
+
 **Reconnues pour compatibilité mais pas encore implémentées :** les définir
 provoque une erreur explicite au lieu d'être ignorées silencieusement
 (ex. `--remux-video`, `--merge-output-format`, `--limit-rate`,
-`--write-info-json`, `--write-subs`, `--playlist-reverse`, `--break-on-existing`).
+`--write-info-json`, `--write-subs`, `--playlist-reverse`, `--break-on-reject`).
 
 ## Architecture
 
