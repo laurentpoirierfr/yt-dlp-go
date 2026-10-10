@@ -14,6 +14,7 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 
 ## État du projet
 
+
 | Domaine | État |
 | --- | --- |
 | Extracteur YouTube (vidéos) | Fonctionnel |
