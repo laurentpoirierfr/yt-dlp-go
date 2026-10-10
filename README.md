@@ -24,7 +24,9 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 | Métadonnées JSON (`-j`, `-J`) | Fonctionnel |
 | Sous-titres | Extraction oui, écriture sur disque en cours |
 | Playlists | Pipeline prêt, extracteur YouTube (1re page) fonctionnel |
-| Post-traitements (audio, remux) | Partiel (`--remux-video`, fusion) |
+| Post-traitements (audio, remux) | Partiel (fusion ffmpeg seule ; `--remux-video` refusé) |
+| Noms de fichiers (gabarits, `--restrict/windows/trim-filenames`) | Fonctionnel |
+| Options non implémentées | Refusées explicitement (plus de no-op silencieux) |
 | Interface terminal (IHM Bubble Tea) | Fonctionnelle |
 
 ## Prérequis
@@ -217,8 +219,9 @@ YTDL_JSON_PRETTY=1 yt-dlp-go -j "URL"
 ```
 
 L'écriture des métadonnées sur disque (`--write-info-json`,
-`--write-description`, `--write-thumbnail`) est reconnue par l'interface mais
-pas encore implémentée par le pipeline.
+`--write-description`, `--write-thumbnail`) n'est pas encore implémentée : ces
+options sont désormais **refusées explicitement** (erreur) plutôt qu'ignorées
+silencieusement.
 
 ## Noms et dossiers de sortie
 
@@ -252,6 +255,13 @@ Champs disponibles : `title`, `id`, `ext`, `display_id`, `duration`,
 `upload_date`, `release_date`, `extractor`, `extractor_key`, `webpage_url`,
 `format_id`, `format`, `resolution`, `width`, `height`, `playlist`,
 `playlist_index`, `playlist_id`, `view_count`, `like_count`, `description`.
+
+Le gabarit accepte les spécificateurs de format (`%(playlist_index)02d`), une
+valeur par défaut alternative (`%(uploader|inconnu)s`) et le placeholder pour
+champ absent (`NA`, configurable). Les caractères interdits par le système de
+fichiers sont automatiquement remplacés ; `--restrict-filenames` limite à
+`[A-Za-z0-9._-]`, `--windows-filenames` retire les points/espaces finaux et
+`--trim-filenames N` limite la longueur.
 
 ## Parties et playlists
 
@@ -362,31 +372,36 @@ yt-dlp-go --help
 
 ## Compatibilité des options avec yt-dlp
 
-Les options suivantes sont reconnues (mêmes noms et sémantique que yt-dlp) :
+Les options suivantes sont reconnues avec les mêmes noms que yt-dlp.
+
+**Prise en charge complète :**
 
 ```
 Sortie      -o/--output, -P/--paths, --id, --restrict-filenames,
             --windows-filenames, --trim-filenames, --no-part
 Formats     -f/--format, -S/--format-sort, --format-sort-force,
-            --prefer-free-formats, --merge-output-format, --remux-video,
-            --check-formats, --ignore-no-formats-error
+            --prefer-free-formats
 Simulation  -s/--simulate, --skip-download, --no-progress, --get-url,
             --get-title, --get-id, --get-filename
 JSON        -j/--dump-json, -J/--dump-single-json, -F/--list-formats
-Erreurs     -i/--ignore-errors, --break-on-existing, --break-on-reject,
-            --break-per-input
+Erreurs     -i/--ignore-errors
 Réseau      --proxy, --socket-timeout, --user-agent, --add-header,
-            --no-check-certificate, --limit-rate, --http-chunk-size,
-            --concurrent-fragments, --retries, --fragment-retries,
-            --extractor-retries, --continue, --force-overwrites
-Playlist    --no-playlist, --playlist-start, --playlist-end,
-            -I/--playlist-items, --playlist-reverse, --playlist-random,
-            --flat-playlist
-Métadonnées --write-thumbnail, --write-all-thumbnails, --write-info-json,
-            --write-description, --write-subs, --write-auto-subs,
-            --all-subs, --sub-langs, --sub-format
+            --no-check-certificate, --retries, --continue, --force-overwrites
+Playlist    --no-playlist, --yes-playlist, --playlist-start, --playlist-end,
+            -I/--playlist-items, --flat-playlist
 Divers      -q/--quiet, -v/--verbose, --ffmpeg-location, --tui, --no-tui
 ```
+
+Par défaut, la première erreur arrête le programme ; `-i/--ignore-errors`
+poursuit le traitement des URL suivantes.
+
+`-I/--playlist-items` accepte les plages `1:10`, les pas `1:10:2`, les indices
+négatifs (depuis la fin, ex. `-1` = dernier) et l'ancienne syntaxe `1-3`.
+
+**Reconnues pour compatibilité mais pas encore implémentées :** les définir
+provoque une erreur explicite au lieu d'être ignorées silencieusement
+(ex. `--remux-video`, `--merge-output-format`, `--limit-rate`,
+`--write-info-json`, `--write-subs`, `--playlist-reverse`, `--break-on-existing`).
 
 ## Architecture
 

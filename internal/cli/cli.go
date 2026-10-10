@@ -71,11 +71,15 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 			return nil
 		})
 
+		abortOnError := opts.IgnoreErrors == options.IgnoreNone
 		for _, url := range urls {
 			info, err := ydl.ExtractInfo(url, !simulate)
 			if err != nil {
 				sink.Log(events.Log{Level: events.LevelError, Text: err.Error()})
 				exit = 1
+				if abortOnError {
+					return exit
+				}
 				continue
 			}
 			if info == nil {

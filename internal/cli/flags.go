@@ -18,6 +18,7 @@ func newRootCmd(o *options.Options) *cobra.Command {
 		continueDL   bool
 		addHeaders   []string
 		forceOver    bool
+		yesPlaylist  bool
 		outTmpl      = o.Outtmpl["default"]
 	)
 
@@ -55,6 +56,9 @@ func newRootCmd(o *options.Options) *cobra.Command {
 				v := forceOver
 				o.Overwrites = &v
 			}
+			if yesPlaylist {
+				o.NoPlaylist = false
+			}
 			if o.HTTPHeaders == nil {
 				o.HTTPHeaders = map[string]string{}
 			}
@@ -63,7 +67,7 @@ func newRootCmd(o *options.Options) *cobra.Command {
 					o.HTTPHeaders[strings.TrimSpace(k)] = strings.TrimSpace(v)
 				}
 			}
-			return nil
+			return validateUnsupported(cmd)
 		},
 	}
 
@@ -132,7 +136,7 @@ func newRootCmd(o *options.Options) *cobra.Command {
 
 	// Playlist
 	f.BoolVar(&o.NoPlaylist, "no-playlist", false, "Download only the video if a URL refers to both")
-	f.BoolVar(new(bool), "yes-playlist", false, "Download the playlist, if the URL refers to a video and a playlist")
+	f.BoolVar(&yesPlaylist, "yes-playlist", false, "Download the playlist, if the URL refers to a video and a playlist")
 	f.IntVar(&o.PlaylistStart, "playlist-start", o.PlaylistStart, "Playlist video to start at")
 	f.IntVar(&o.PlaylistEnd, "playlist-end", o.PlaylistEnd, "Playlist video to end at")
 	f.StringVarP(&o.PlaylistItems, "playlist-items", "I", o.PlaylistItems, "Playlist video items to download")
