@@ -7,9 +7,13 @@ livré sous forme d'un binaire Go unique.
 Le projet vise la compatibilité avec les options de yt-dlp et une architecture
 en packages claire (`cmd/`, `internal/`, `pkg/`).
 
+[![Release](https://img.shields.io/github/v/release/laurentpoirierfr/yt-dlp-go)](https://github.com/laurentpoirierfr/yt-dlp-go/releases/latest)
+[![CI](https://github.com/laurentpoirierfr/yt-dlp-go/actions/workflows/ci.yml/badge.svg)](https://github.com/laurentpoirierfr/yt-dlp-go/actions/workflows/ci.yml)
+
 ![Project](./assets/project.png)
 
 ## État du projet
+
 
 | Domaine | État |
 | --- | --- |
@@ -30,6 +34,13 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 - Node.js (uniquement pour résoudre les défis JavaScript de YouTube)
 
 ## Installation
+
+### Binaires précompilés
+
+Des binaires pour Linux, macOS et Windows (amd64 et arm64) sont disponibles sur
+la [page des releases](https://github.com/laurentpoirierfr/yt-dlp-go/releases/latest).
+
+### Depuis les sources
 
 ```console
 git clone <ce-depot> yt-dlp-go
@@ -148,6 +159,8 @@ hauteur du terminal et se compose de :
 - **Journal** : logs d'extraction et de post-traitement, défilables, qui
   occupent l'espace restant.
 - **Pied de page** : compteurs (terminées / échouées) et rappel des raccourcis.
+
+![Interface terminal de yt-dlp-go](./assets/terminal.png)
 
 ```console
 # Lancée automatiquement sur un terminal interactif

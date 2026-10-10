@@ -2,10 +2,13 @@
 package downloader
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/events"
@@ -72,78 +75,141 @@ func (d *HTTPDownloader) downloadOne(info *infodict.InfoDict, f infodict.Format,
 		return err
 	}
 
-	var offset int64
 	cont := true
 	if d.opts.ContinueDL != nil {
 		cont = *d.opts.ContinueDL
 	}
+	offset := int64(0)
 	if cont {
 		if st, err := os.Stat(dest); err == nil {
 			offset = st.Size()
 		}
 	}
-	headers := map[string]string{}
-	if offset > 0 {
-		headers["Range"] = fmt.Sprintf("bytes=%d-", offset)
-	}
-	resp, err := d.client.Get(url, headers)
+
+	// Writes always append at the end of the file; a non-continue run truncates
+	// any stale part first.
+	file, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		d.emitError(info, dest, offset, err)
 		return err
 	}
-	defer resp.Close()
-
-	if offset > 0 && resp.StatusCode != 206 {
+	defer file.Close()
+	if !cont {
+		if err := file.Truncate(0); err != nil {
+			return err
+		}
 		offset = 0
 	}
 
-	flags := os.O_CREATE | os.O_WRONLY
-	if offset > 0 {
-		flags |= os.O_APPEND
-	} else {
-		flags |= os.O_TRUNC
+	maxRetries := d.opts.Retries
+	if maxRetries < 0 {
+		maxRetries = 0
 	}
-	out, err := os.OpenFile(dest, flags, 0o644)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	d.sink.Progress(events.Progress{
-		Info: info, Filename: dest, Status: events.StatusStarted,
-		Downloaded: offset, Total: totalSize(resp, offset),
-	})
-
-	start := time.Now()
 	downloaded := offset
-	total := totalSize(resp, offset)
-	last := time.Time{}
-	buf := make([]byte, 256*1024)
-	for {
-		n, rerr := resp.Body().Read(buf)
-		if n > 0 {
-			if _, werr := out.Write(buf[:n]); werr != nil {
-				d.emitError(info, dest, downloaded, werr)
-				return werr
-			}
-			downloaded += int64(n)
-			now := time.Now()
-			if now.Sub(last) >= progressInterval {
-				last = now
-				d.sink.Progress(progressEvent(info, dest, downloaded, total, start, events.StatusRunning))
-			}
+	start := time.Now()
+	for attempt := 0; ; attempt++ {
+		written, rerr := d.downloadSegment(info, url, file, dest, downloaded)
+		downloaded = written
+		if rerr == nil {
+			d.sink.Progress(progressEvent(info, dest, downloaded, downloaded, start, events.StatusFinished))
+			return nil
 		}
-		if rerr == io.EOF {
-			break
-		}
-		if rerr != nil {
+		if attempt >= maxRetries || !isRetryable(rerr) {
 			d.emitError(info, dest, downloaded, rerr)
 			return rerr
 		}
+		d.sink.Log(events.Log{
+			Level: events.LevelWarning,
+			Text:  fmt.Sprintf("[download] Got error: %v (retry %d of %d)", rerr, attempt+1, maxRetries),
+		})
+	}
+}
+
+// downloadSegment fetches url and appends the body - or the remaining part of
+// it, when start > 0 - to file. It returns the absolute number of bytes
+// written (including start) and any read error.
+func (d *HTTPDownloader) downloadSegment(info *infodict.InfoDict, url string, file *os.File, dest string, start int64) (int64, error) {
+	headers := map[string]string{}
+	if start > 0 {
+		headers["Range"] = fmt.Sprintf("bytes=%d-", start)
+	}
+	resp, err := d.client.Get(url, headers)
+	if err != nil {
+		return start, err
+	}
+	defer resp.Close()
+
+	if start > 0 {
+		switch resp.StatusCode {
+		case 206: // partial content, exactly what we asked
+		case 200:
+			// Server ignored the Range request; restart the part from scratch.
+			if _, err := file.Seek(0, io.SeekStart); err != nil {
+				return start, err
+			}
+			if err := file.Truncate(0); err != nil {
+				return start, err
+			}
+			start = 0
+		case 416: // range not satisfiable: the part is already complete
+			return start, nil
+		default:
+			return start, fmt.Errorf("unexpected HTTP status %d while downloading format %s", resp.StatusCode, info.FormatID)
+		}
 	}
 
-	d.sink.Progress(progressEvent(info, dest, downloaded, total, start, events.StatusFinished))
-	return nil
+	total := totalSize(resp, start)
+	if start == 0 {
+		d.sink.Progress(events.Progress{
+			Info: info, Filename: dest, Status: events.StatusStarted,
+			Downloaded: 0, Total: total,
+		})
+	} else {
+		d.sink.Progress(events.Progress{
+			Info: info, Filename: dest, Status: events.StatusRunning,
+			Downloaded: start, Total: total,
+		})
+	}
+
+	written := start
+	buf := make([]byte, 256*1024)
+	segStart := time.Now()
+	last := time.Time{}
+	for {
+		n, rerr := resp.Body().Read(buf)
+		if n > 0 {
+			if _, werr := file.Write(buf[:n]); werr != nil {
+				return written, werr
+			}
+			written += int64(n)
+			now := time.Now()
+			if last.IsZero() || now.Sub(last) >= progressInterval {
+				last = now
+				d.sink.Progress(progressEvent(info, dest, written, total, segStart, events.StatusRunning))
+			}
+		}
+		if rerr == io.EOF {
+			return written, nil
+		}
+		if rerr != nil {
+			return written, rerr
+		}
+	}
+}
+
+// isRetryable reports whether a download error is worth retrying (transient
+// network failures), as opposed to fatal protocol errors.
+func isRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
 }
 
 func totalSize(resp *networking.Response, offset int64) int64 {
