@@ -31,8 +31,11 @@ func Main(ies []extractor.IE, args []string) int {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		return 1
 	}
-	// Help/usage was requested; nothing left to do.
+	// Help/usage or version was requested; nothing left to do.
 	if help, _ := root.Flags().GetBool("help"); help {
+		return 0
+	}
+	if version, _ := root.Flags().GetBool("version"); version {
 		return 0
 	}
 	return run(ies, opts, root)
