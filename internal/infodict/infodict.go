@@ -145,16 +145,16 @@ type Format struct {
 	FormatNote string `json:"format_note,omitempty"`
 	Ext        string `json:"ext,omitempty"`
 
-	Width         int     `json:"width,omitempty"`
-	Height        int     `json:"height,omitempty"`
-	Resolution    string  `json:"resolution,omitempty"`
+	Width         int      `json:"width,omitempty"`
+	Height        int      `json:"height,omitempty"`
+	Resolution    string   `json:"resolution,omitempty"`
 	AspectRatio   *float64 `json:"aspect_ratio,omitempty"`
-	FPS           float64 `json:"fps,omitempty"`
-	TBR           float64 `json:"tbr,omitempty"`
-	VBR           float64 `json:"vbr,omitempty"`
-	ABR           float64 `json:"abr,omitempty"`
-	ASR           int     `json:"asr,omitempty"`
-	AudioChannels int     `json:"audio_channels,omitempty"`
+	FPS           float64  `json:"fps,omitempty"`
+	TBR           float64  `json:"tbr,omitempty"`
+	VBR           float64  `json:"vbr,omitempty"`
+	ABR           float64  `json:"abr,omitempty"`
+	ASR           int      `json:"asr,omitempty"`
+	AudioChannels int      `json:"audio_channels,omitempty"`
 
 	Filesize       int64 `json:"filesize,omitempty"`
 	FilesizeApprox int64 `json:"filesize_approx,omitempty"`

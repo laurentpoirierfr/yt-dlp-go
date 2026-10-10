@@ -17,7 +17,7 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 | Téléchargement HTTP + fusion ffmpeg | Fonctionnel |
 | Métadonnées JSON (`-j`, `-J`) | Fonctionnel |
 | Sous-titres | Extraction oui, écriture sur disque en cours |
-| Playlists | Pipeline prêt, extracteur YouTube en cours |
+| Playlists | Pipeline prêt, extracteur YouTube (1re page) fonctionnel |
 | Post-traitements (audio, remux) | Partiel (`--remux-video`, fusion) |
 | Interface terminal (IHM Bubble Tea) | Fonctionnelle |
 
@@ -99,6 +99,21 @@ yt-dlp-go -f "bestvideo[height<=720]+bestaudio/best[height<=720]" "URL"
 # Filtrage par extension / codec
 yt-dlp-go -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]" "URL"
 ```
+
+### Télécharger une playlist
+
+```console
+# Toute la playlist (enregistre chaque vidéo, la TUI affiche une barre par vidéo)
+yt-dlp-go --tui "https://www.youtube.com/playlist?list=PLzH6n4zXuckpfMu_4Ff8E7Z1behQks5ba"
+
+# Premier tiers de la playlist, qualité limitée, dans un sous-dossier par playlist
+yt-dlp-go --playlist-items 1-3 -f "best[height<=720]" \
+  -o "%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s" "URL"
+```
+
+> Note : l'extraction couvre actuellement la première page de la playlist
+> (les premières vidéos). La continuation automatique est en cours de
+> développement.
 
 ### Simuler (sans télécharger)
 
