@@ -10,18 +10,18 @@ import (
 func TestParsePlaylistItems(t *testing.T) {
 	cases := []struct {
 		spec string
-		want []int32
+		want []playlistRange
 		ok   bool
 	}{
-		{"1-3", []int32{1, 2, 3}, true},
-		{"1,3-4,9-", []int32{1, 3, 4, 9, 10}, true},
-		{"-2", []int32{1, 2}, true},
-		{"5", []int32{5}, true},
-		{"1-3, 7", []int32{1, 2, 3, 7}, true},
+		{"1-3", []playlistRange{{1, 3}}, true},
+		{"1,3-4,9-", []playlistRange{{1, 1}, {3, 4}, {9, 0}}, true},
+		{"-2", []playlistRange{{1, 2}}, true},
+		{"5", []playlistRange{{5, 5}}, true},
+		{"1-3, 7", []playlistRange{{1, 3}, {7, 7}}, true},
+		{"", nil, true},
 		{"3-1", nil, false},
 		{"abc", nil, false},
 		{"1..3", nil, false},
-		{"", []int32{}, true},
 	}
 	for _, c := range cases {
 		got, err := parsePlaylistItems(c.spec)
@@ -32,16 +32,8 @@ func TestParsePlaylistItems(t *testing.T) {
 		if !c.ok {
 			continue
 		}
-		var gotKeys []int32
-		for k := range got {
-			gotKeys = append(gotKeys, int32(k))
-		}
-		sortKeys(gotKeys)
-		if len(got) == 0 && len(c.want) == 0 {
-			continue
-		}
-		if !reflect.DeepEqual(gotKeys, c.want) {
-			t.Errorf("parsePlaylistItems(%q) = %v, want %v", c.spec, gotKeys, c.want)
+		if !reflect.DeepEqual(got, c.want) {
+			t.Errorf("parsePlaylistItems(%q) = %v, want %v", c.spec, got, c.want)
 		}
 	}
 }
@@ -49,7 +41,7 @@ func TestParsePlaylistItems(t *testing.T) {
 func TestSelectPlaylistEntries(t *testing.T) {
 	entries := make([]*infodict.InfoDict, 5)
 	for i := range entries {
-		entries[i] = &infodict.InfoDict{ID: runeID(i + 1)}
+		entries[i] = &infodict.InfoDict{ID: string(rune('0' + i + 1))}
 	}
 	selected, err := selectPlaylistEntries(entries, 2, 4, "")
 	if err != nil {
@@ -64,6 +56,7 @@ func TestSelectPlaylistEntries(t *testing.T) {
 			t.Errorf("idx = %d, want %d", it.idx, wantIdx[i])
 		}
 	}
+
 	selected, err = selectPlaylistEntries(entries, 1, 0, "1,4")
 	if err != nil {
 		t.Fatalf("items err: %v", err)
@@ -71,14 +64,20 @@ func TestSelectPlaylistEntries(t *testing.T) {
 	if len(selected) != 2 || selected[0].idx != 1 || selected[1].idx != 4 {
 		t.Errorf("items selection = %+v", selected)
 	}
-}
 
-func runeID(n int) string { return string(rune('0' + n)) }
+	selected, err = selectPlaylistEntries(entries, 1, 0, "4-")
+	if err != nil {
+		t.Fatalf("unbounded err: %v", err)
+	}
+	if len(selected) != 2 || selected[0].idx != 4 || selected[1].idx != 5 {
+		t.Errorf("unbounded selection = %+v", selected)
+	}
 
-func sortKeys(keys []int32) {
-	for i := 1; i < len(keys); i++ {
-		for j := i; j > 0 && keys[j] < keys[j-1]; j-- {
-			keys[j], keys[j-1] = keys[j-1], keys[j]
-		}
+	selected, err = selectPlaylistEntries(entries, 1, 0, "9-")
+	if err != nil {
+		t.Fatalf("out-of-range unbounded err: %v", err)
+	}
+	if len(selected) != 0 {
+		t.Errorf("out-of-range selection = %+v, want none", selected)
 	}
 }

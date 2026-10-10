@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -144,15 +143,35 @@ type playlistItem struct {
 	entry *infodict.InfoDict
 }
 
+type playlistRange struct {
+	lo, hi int // hi == 0 means unbounded (to the end of the playlist)
+}
+
 // selectPlaylistEntries narrows the entries to those selected by
 // --playlist-start, --playlist-end and --playlist-items.
 func selectPlaylistEntries(entries []*infodict.InfoDict, start, end int, items string) ([]playlistItem, error) {
 	var chosen map[int]bool
 	if items != "" {
-		var err error
-		chosen, err = parsePlaylistItems(items)
+		ranges, err := parsePlaylistItems(items)
 		if err != nil {
 			return nil, err
+		}
+		n := len(entries)
+		chosen = make(map[int]bool, n)
+		for _, r := range ranges {
+			lo := r.lo
+			hi := r.hi
+			if hi == 0 || hi > n {
+				hi = n
+			}
+			if lo > hi {
+				continue
+			}
+			for k := lo; k <= hi; k++ {
+				if k > 0 {
+					chosen[k] = true
+				}
+			}
 		}
 	}
 	var out []playlistItem
@@ -174,68 +193,65 @@ func selectPlaylistEntries(entries []*infodict.InfoDict, start, end int, items s
 }
 
 // parsePlaylistItems parses a --playlist-items specification such as
-// "1-3,5,9-" into an integer set (1-based).
-func parsePlaylistItems(spec string) (map[int]bool, error) {
-	out := map[int]bool{}
+// "1-3,5,9-" into a list of ranges (1-based).
+func parsePlaylistItems(spec string) ([]playlistRange, error) {
+	var out []playlistRange
 	for _, part := range strings.Split(spec, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
-		lo, hi, err := parsePlaylistRange(part)
+		lo, hi, unbounded, err := parsePlaylistRange(part)
 		if err != nil {
 			return nil, fmt.Errorf("invalid format for --playlist-items: %q", part)
 		}
-		if lo > hi {
+		if !unbounded && lo > hi {
 			return nil, fmt.Errorf("playlist end is smaller than playlist start: %q", part)
 		}
-		for n := lo; n <= hi; n++ {
-			if n > 0 {
-				out[n] = true
-			}
-		}
+		out = append(out, playlistRange{lo: lo, hi: hi})
 	}
 	return out, nil
 }
 
 // parsePlaylistRange parses a single item token: "N", "N-M", "N-" or "-M".
-func parsePlaylistRange(tok string) (lo, hi int, err error) {
+func parsePlaylistRange(tok string) (lo, hi int, unbounded bool, err error) {
 	tok = strings.TrimSpace(tok)
 	if tok == "" {
-		return 0, 0, fmt.Errorf("empty range")
+		return 0, 0, false, fmt.Errorf("empty range")
 	}
 	dash := strings.IndexByte(tok, '-')
 	if dash < 0 {
 		n, err := strconv.Atoi(tok)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, false, err
 		}
-		return n, n, nil
+		return n, n, false, nil
 	}
 	left := strings.TrimSpace(tok[:dash])
 	right := strings.TrimSpace(tok[dash+1:])
 	if left == "" && right == "" {
-		return 0, 0, fmt.Errorf("empty range")
+		return 0, 0, false, fmt.Errorf("empty range")
 	}
 	if left != "" {
 		lo, err = strconv.Atoi(left)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, false, err
 		}
 	}
 	if right != "" {
 		hi, err = strconv.Atoi(right)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, false, err
 		}
 	}
 	if left == "" {
 		lo = 1
 	}
 	if right == "" {
-		hi = math.MaxInt
+		hi = 0
+		unbounded = true
 	}
-	return lo, hi, nil
+	return lo, hi, unbounded, nil
 }
 
 func (y *YoutubeDL) processVideoResult(info *infodict.InfoDict, download bool) (*infodict.InfoDict, error) {

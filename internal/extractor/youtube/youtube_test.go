@@ -62,6 +62,7 @@ func TestSuitable(t *testing.T) {
 	noMatch := []string{
 		"https://www.youtube.com/@somechannel",
 		"https://www.youtube.com/playlist?list=PL123",
+		"https://www.youtube.com/watch?v=h87gs1mcxSc&list=RDh87gs1mcxSc&index=1",
 		"https://example.com/watch?v=dQw4w9WgXcQ",
 	}
 	for _, u := range noMatch {
@@ -71,6 +72,30 @@ func TestSuitable(t *testing.T) {
 	}
 	if id := ie.MatchID("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1"); id != "dQw4w9WgXcQ" {
 		t.Errorf("MatchID = %q", id)
+	}
+}
+
+func TestPlaylistSuitableAndURL(t *testing.T) {
+	ie := NewYoutubePlaylistIE()
+	watchURL := "https://www.youtube.com/watch?v=h87gs1mcxSc&list=RDh87gs1mcxSc&index=1"
+	if !ie.Suitable(watchURL) {
+		t.Errorf("should match watch URL with list: %s", watchURL)
+	}
+	playlistURL, err := ie.PlaylistURLForURL(watchURL)
+	if err != nil {
+		t.Fatalf("PlaylistURLForURL: %v", err)
+	}
+	if want := "https://www.youtube.com/playlist?list=RDh87gs1mcxSc"; playlistURL != want {
+		t.Errorf("PlaylistURLForURL = %q, want %q", playlistURL, want)
+	}
+	if id := ie.MatchID(playlistURL); id != "RDh87gs1mcxSc" {
+		t.Errorf("MatchID = %q", id)
+	}
+	if !ie.Suitable("https://www.youtube.com/playlist?list=PLzH6n4zXuckpfMu_4Ff8E7Z1behQks5ba") {
+		t.Errorf("should match plain playlist URL")
+	}
+	if ie.Suitable("https://www.youtube.com/watch?v=dQw4w9WgXcQ") {
+		t.Errorf("should not match plain watch URL")
 	}
 }
 
@@ -110,6 +135,32 @@ func TestPlaylistExtract(t *testing.T) {
 		}
 		if e.ID == "" || e.URL == "" {
 			t.Errorf("entry %d missing id/url: %+v", i, e)
+		}
+		t.Logf("  %s  %s", e.ID, e.Title)
+	}
+}
+
+func TestPlaylistExtractFromWatch(t *testing.T) {
+	if os.Getenv("YTDL_NET") == "" {
+		t.Skip("set YTDL_NET=1 to run network tests")
+	}
+	ie := NewYoutubePlaylistIE()
+	ie.SetDownloader(newHarness())
+	// watch URL carrying a list: must be redirected to the whole playlist
+	info, err := ie.Extract("https://www.youtube.com/watch?v=h87gs1mcxSc&list=RDh87gs1mcxSc&start_radio=1")
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if info.Type != "playlist" {
+		t.Fatalf("type = %q, want playlist", info.Type)
+	}
+	if len(info.Entries) == 0 {
+		t.Fatal("no playlist entries")
+	}
+	t.Logf("title: %q  entries: %d", info.Title, len(info.Entries))
+	for i, e := range info.Entries {
+		if i >= 5 {
+			break
 		}
 		t.Logf("  %s  %s", e.ID, e.Title)
 	}

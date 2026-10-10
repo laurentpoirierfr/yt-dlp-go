@@ -2,6 +2,7 @@ package youtube
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -29,9 +30,27 @@ func NewYoutubeIE() *YoutubeIE {
 	return ie
 }
 
-// Suitable rejects /v/videoseries and /live/live_stream pseudo-IDs.
+// Suitable rejects /v/videoseries and /live/live_stream pseudo-IDs, as well
+// as any URL that also selects a playlist via a "list" query parameter (yt-dlp
+// routes those to the playlist extractor).
 func (ie *YoutubeIE) Suitable(u string) bool {
-	return ie.Base.Suitable(u) && !reNonVideoPath.MatchString(u)
+	if !ie.Base.Suitable(u) || reNonVideoPath.MatchString(u) {
+		return false
+	}
+	return !urlCarriesList(u)
+}
+
+// urlCarriesList reports whether the URL has a non-empty "list" query parameter.
+func urlCarriesList(u string) bool {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return false
+	}
+	values, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return false
+	}
+	return values.Get("list") != ""
 }
 
 // IEName returns the display name.

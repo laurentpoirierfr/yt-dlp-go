@@ -111,11 +111,19 @@ yt-dlp-go --tui "https://www.youtube.com/playlist?list=PLzH6n4zXuckpfMu_4Ff8E7Z1
 # Premier tiers de la playlist, qualité limitée, dans un sous-dossier par playlist
 yt-dlp-go --playlist-items 1-3 -f "best[height<=720]" \
   -o "%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s" "URL"
+
+# Une URL vidéo qui porte aussi une playlist (radio « Mix », etc.)
+yt-dlp-go --tui "https://www.youtube.com/watch?v=h87gs1mcxSc&list=RDh87gs1mcxSc&start_radio=1"
 ```
 
 > Note : l'extraction couvre actuellement la première page de la playlist
 > (les premières vidéos). La continuation automatique est en cours de
 > développement.
+>
+> Une URL de type `watch?v=…&list=…` est automatiquement reconnue et ramenée à
+> la playlist complète (`https://www.youtube.com/playlist?list=…`). Les radios
+> « Mix » (`RD…`), qui n'ont pas de page playlist, sont lues depuis la file de
+> la page vidéo.
 
 ### Simuler (sans télécharger)
 
