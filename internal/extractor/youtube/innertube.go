@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/elfeo/yt-dlp-go/internal/extractor"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/extractor"
 )
 
 // StreamingProtocol mirrors yt-dlp's StreamingProtocol enum values.
@@ -244,6 +244,9 @@ func (ie *Base) callAPI(ep string, body map[string]any, c *Client, videoID strin
 		"Origin":                   apiProtocol + "://" + host,
 		"Content-Type":             "application/json",
 	}
+	if ie.visitorData != "" {
+		headers["X-Goog-Visitor-Id"] = ie.visitorData
+	}
 	if ua := userAgent(c, ytcfg); ua != "" {
 		headers["User-Agent"] = ua
 	}
@@ -351,6 +354,11 @@ func extractVisitorData(sources ...map[string]any) string {
 				if v, ok := cl["visitorData"].(string); ok && v != "" {
 					return v
 				}
+			}
+		}
+		if rc, ok := s["responseContext"].(map[string]any); ok {
+			if v, ok := rc["visitorData"].(string); ok && v != "" {
+				return v
 			}
 		}
 	}

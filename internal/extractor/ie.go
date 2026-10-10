@@ -5,9 +5,9 @@ package extractor
 import (
 	"fmt"
 
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
-	"github.com/elfeo/yt-dlp-go/internal/networking"
-	"github.com/elfeo/yt-dlp-go/internal/options"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/networking"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/options"
 )
 
 // Downloader is the interface extractors use to reach the core pipeline

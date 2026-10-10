@@ -19,7 +19,7 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 | Sous-titres | Extraction oui, écriture sur disque en cours |
 | Playlists | Pipeline prêt, extracteur YouTube en cours |
 | Post-traitements (audio, remux) | Partiel (`--remux-video`, fusion) |
-| Interface TUI (Bubble Tea) | Prévu |
+| Interface terminal (IHM Bubble Tea) | Fonctionnelle |
 
 ## Prérequis
 
@@ -38,7 +38,14 @@ go build -o yt-dlp-go ./cmd/yt-dlp
 Ou directement :
 
 ```console
-go install github.com/elfeo/yt-dlp-go/cmd/yt-dlp@latest
+go install github.com/laurentpoirierfr/yt-dlp-go/cmd/yt-dlp@latest
+```
+
+Exécution depuis les sources (sans compiler de binaire) :
+
+```console
+go run . --tui "https://www.youtube.com/watch?v=..."
+# équivalent : go run ./cmd/yt-dlp --tui "..."
 ```
 
 ## Utilisation de base
@@ -102,6 +109,61 @@ yt-dlp-go --get-title "URL"     # affiche le titre
 yt-dlp-go --get-id "URL"        # affiche l'identifiant
 yt-dlp-go --skip-download "URL" # extrait et affiche, sans télécharger
 ```
+
+## Interface terminal (IHM)
+
+Lors d'un téléchargement réel dans un terminal interactif, une interface
+plein écran (Bubble Tea) est affichée automatiquement. Elle occupe toute la
+hauteur du terminal et se compose de :
+
+- **En-tête** : résumé global à gauche (progression des tâches, volume total,
+  débit cumulé, temps écoulé) et **logo ASCII `YT-DLP` en haut à droite**.
+- **Tâches** : une ligne d'état + une barre de progression par téléchargement,
+  avec volume téléchargé/total, débit et ETA.
+- **Journal** : logs d'extraction et de post-traitement, défilables, qui
+  occupent l'espace restant.
+- **Pied de page** : compteurs (terminées / échouées) et rappel des raccourcis.
+
+```console
+# Lancée automatiquement sur un terminal interactif
+yt-dlp-go "URL"
+
+# Forcer l'interface (même si la détection automatique échoue)
+yt-dlp-go --tui "URL"
+
+# Désactiver l'interface : sortie classique, scripts, redirections
+yt-dlp-go --no-tui "URL"
+```
+
+Règles d'activation :
+
+- activée par défaut pour un vrai téléchargement quand `stdout` est un
+  terminal (TTY) ;
+- désactivée automatiquement si la sortie est redirigée/pipee (CI, fichiers),
+  en mode simulation (`-s`, `-j`, `-J`, `-F`, `--get-*`) ou avec `-q`/`--quiet` ;
+- `--tui` force l'affichage, `--no-tui` le désactive.
+
+### Raccourcis clavier
+
+| Touche | Action |
+| --- | --- |
+| `q`, `esc`, `ctrl+c` | Quitter |
+| `tab` | Basculer le focus vers les logs |
+| `j` / `k`, `↓` / `↑` | Défiler ligne à ligne |
+| `pgup` / `pgdn` | Défiler page à page |
+| `g` / `G` | Aller au début / à la fin |
+
+L'interface se ferme automatiquement peu après la fin du dernier
+téléchargement, avec un court délai pour lire le résultat.
+
+### Architecture
+
+L'IHM est découplée du cœur : `internal/events` définit le flux d'événements
+(progression, post-traitement, logs) et un `Sink`. Le cœur émet via
+`YoutubeDL.SetSink`, et l'IHM (`internal/tui`) comme la sortie classique
+(`internal/render`) ne sont que deux implémentations de ce `Sink`. Ajouter une
+autre sortie (JSON, web) n'affecte donc pas la logique d'extraction ou de
+téléchargement.
 
 ## Métadonnées
 
@@ -285,7 +347,7 @@ Playlist    --no-playlist, --playlist-start, --playlist-end,
 Métadonnées --write-thumbnail, --write-all-thumbnails, --write-info-json,
             --write-description, --write-subs, --write-auto-subs,
             --all-subs, --sub-langs, --sub-format
-Divers      -q/--quiet, -v/--verbose, --ffmpeg-location
+Divers      -q/--quiet, -v/--verbose, --ffmpeg-location, --tui, --no-tui
 ```
 
 ## Architecture
@@ -296,6 +358,9 @@ internal/cli/          Commandes cobra et correspondance des options
 internal/core/         Pipeline YoutubeDL (extract, process, format selector)
 internal/downloader/   Téléchargement HTTP (reprise, fusion des parts)
 internal/postprocessor/ Post-traitements (fusion ffmpeg)
+internal/events/       Flux d'événements (progress, postprocess, logs)
+internal/render/       Sink texte reproduisant la sortie CLI classique
+internal/tui/          Interface plein écran Bubble Tea (logo, barres, logs)
 internal/extractor/    Contrat InfoExtractor, registre, base commune
 internal/extractor/youtube/  Extracteur YouTube (Innertube, formats, jsc)
 internal/extractor/generic/  Extracteur générique (fallback)

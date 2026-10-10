@@ -5,16 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/elfeo/yt-dlp-go/internal/core"
-	"github.com/elfeo/yt-dlp-go/internal/downloader"
-	"github.com/elfeo/yt-dlp-go/internal/extractor"
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
-	"github.com/elfeo/yt-dlp-go/internal/options"
-	"github.com/elfeo/yt-dlp-go/internal/postprocessor"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/core"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/downloader"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/events"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/extractor"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/options"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/postprocessor"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/tui"
 )
 
 // Main runs the CLI with the given extractors and arguments, returning an exit
@@ -26,6 +27,10 @@ func Main(ies []extractor.IE, args []string) int {
 	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		return 1
+	}
+	// Help/usage was requested; nothing left to do.
+	if help, _ := root.Flags().GetBool("help"); help {
+		return 0
 	}
 	return run(ies, opts, root)
 }
@@ -40,78 +45,94 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 	ydl := core.New(opts)
 	ydl.RegisterExtractors(ies)
 
-	httpDL := downloader.NewHTTP(ydl.Client(), opts)
-	var exit int
-	ydl.SetDownloader(func(info *infodict.InfoDict, formats []infodict.Format) error {
-		if opts.ListFormats {
-			listFormats(info)
-			return nil
-		}
-		if opts.ForceJSON || opts.DumpSingleJSON {
-			return nil
-		}
-		if err := httpDL.Download(info, formats); err != nil {
-			exit = 1
-			return err
-		}
-		if len(info.RequestedDownloads) > 1 {
-			merge(info, opts)
-		}
-		return nil
-	})
+	simulate := (opts.Simulate != nil && *opts.Simulate) || opts.ListFormats ||
+		opts.ForceJSON || opts.DumpSingleJSON ||
+		opts.ForceURL || opts.ForceTitle || opts.ForceID || opts.ForceFilename ||
+		opts.SkipDownload
 
-	for _, url := range urls {
-		simulate := opts.ListFormats || opts.ForceJSON || opts.DumpSingleJSON ||
-			opts.ForceURL || opts.ForceTitle || opts.ForceID || opts.ForceFilename ||
-			opts.SkipDownload
-		info, err := ydl.ExtractInfo(url, !simulate)
-		if err != nil {
-			reportErr(err)
-			exit = 1
-			continue
-		}
-		if info == nil {
-			continue
-		}
-		if opts.ListFormats {
-			listFormats(info)
-			continue
-		}
-		if opts.ForceJSON || opts.DumpSingleJSON {
-			if err := dumpJSON(info); err != nil {
-				fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+	process := func() int {
+		sink := ydl.Sink()
+		httpDL := downloader.NewHTTP(ydl.Client(), opts, sink)
+		exit := 0
+		ydl.SetDownloader(func(info *infodict.InfoDict, formats []infodict.Format) error {
+			if err := httpDL.Download(info, formats); err != nil {
 				exit = 1
+				return err
 			}
-			continue
+			if len(info.RequestedDownloads) > 1 {
+				merge(info, opts, sink)
+			}
+			return nil
+		})
+
+		for _, url := range urls {
+			info, err := ydl.ExtractInfo(url, !simulate)
+			if err != nil {
+				sink.Log(events.Log{Level: events.LevelError, Text: err.Error()})
+				exit = 1
+				continue
+			}
+			if info == nil {
+				continue
+			}
+			if opts.ListFormats {
+				listFormats(info)
+				continue
+			}
+			if opts.ForceJSON || opts.DumpSingleJSON {
+				if err := dumpJSON(info); err != nil {
+					sink.Log(events.Log{Level: events.LevelError, Text: err.Error()})
+					exit = 1
+				}
+				continue
+			}
+			if opts.ForceURL {
+				fmt.Println(info.URL)
+			} else if opts.ForceTitle {
+				fmt.Println(info.Title)
+			} else if opts.ForceID {
+				fmt.Println(info.ID)
+			}
+			if opts.ForceFilename && info.Filepath != "" {
+				fmt.Println(info.Filepath)
+			}
 		}
-		if opts.ForceURL {
-			fmt.Println(info.URL)
-		} else if opts.ForceTitle {
-			fmt.Println(info.Title)
-		} else if opts.ForceID {
-			fmt.Println(info.ID)
-		}
-		if opts.ForceFilename && info.Filepath != "" {
-			fmt.Println(info.Filepath)
-		}
+		return exit
 	}
-	return exit
+
+	// The TUI is used automatically for real downloads on an interactive
+	// terminal; --tui forces it, --no-tui (or -q) disables it.
+	useTUI := !opts.NoTUI && !opts.Quiet && !simulate && tui.Supported()
+	if useTUI {
+		err := tui.Run(func(sink events.Sink) error {
+			ydl.SetSink(sink)
+			if code := process(); code != 0 {
+				return fmt.Errorf("one or more downloads failed")
+			}
+			return nil
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	return process()
 }
 
-func merge(info *infodict.InfoDict, opts *options.Options) {
-	merger := postprocessor.NewFFmpegMerger(opts.FFmpegLocation)
+func merge(info *infodict.InfoDict, opts *options.Options, sink events.Sink) {
+	merger := postprocessor.NewFFmpegMerger(opts.FFmpegLocation, sink)
 	var inputs []string
 	for i := range info.RequestedDownloads {
 		inputs = append(inputs, fmt.Sprintf("%s.f%d.%s", info.Filepath, i, orExt(info.RequestedDownloads[i].Ext)))
 	}
-	if err := merger.Merge(inputs, info.Filepath); err != nil {
-		fmt.Fprintf(os.Stderr, "WARNING: %v\n", err)
+	if err := merger.Merge(inputs, info.Filepath, info); err != nil {
+		sink.Log(events.Log{Level: events.LevelWarning, Text: err.Error()})
 		return
 	}
 	for _, in := range inputs {
 		_ = os.Remove(in)
 	}
-	fmt.Fprintf(os.Stderr, "[Merger] Merged formats to \"%s\"\n", info.Filepath)
 }
 
 func orExt(e string) string {
@@ -127,10 +148,6 @@ func dumpJSON(info *infodict.InfoDict) error {
 		enc.SetIndent("", "  ")
 	}
 	return enc.Encode(info)
-}
-
-func reportErr(err error) {
-	fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 }
 
 func listFormats(info *infodict.InfoDict) {
@@ -165,5 +182,3 @@ func orNone(s string) string {
 	}
 	return s
 }
-
-var _ = strings.TrimSpace

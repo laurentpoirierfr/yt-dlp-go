@@ -5,21 +5,23 @@ package core
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/elfeo/yt-dlp-go/internal/extractor"
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
-	"github.com/elfeo/yt-dlp-go/internal/networking"
-	"github.com/elfeo/yt-dlp-go/internal/options"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/events"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/extractor"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/networking"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/options"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/render"
 )
 
 // YoutubeDL is the central pipeline object.
 type YoutubeDL struct {
 	opts   *options.Options
 	client *networking.Client
+	sink   events.Sink
 
 	mu          sync.Mutex
 	extractors  []extractor.IE
@@ -45,9 +47,22 @@ func New(opts *options.Options) *YoutubeDL {
 		byKey:       map[string]extractor.IE{},
 		playlistURL: map[string]bool{},
 	}
+	ydl.sink = render.NewPlainSink(opts)
 	ydl.initClient()
 	return ydl
 }
+
+// SetSink installs the event sink (plain renderer by default; a TUI swaps in
+// its own). Must be called before extraction begins.
+func (y *YoutubeDL) SetSink(s events.Sink) {
+	if s == nil {
+		s = events.NopSink{}
+	}
+	y.sink = s
+}
+
+// Sink returns the current event sink.
+func (y *YoutubeDL) Sink() events.Sink { return y.sink }
 
 func (y *YoutubeDL) initClient() {
 	headers := map[string]string{}
@@ -95,22 +110,15 @@ func (y *YoutubeDL) AllExtractors() []extractor.IE {
 
 // ToScreen prints an informational message.
 func (y *YoutubeDL) ToScreen(format string, args ...any) {
-	if y.opts.Quiet {
-		return
-	}
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	y.sink.Log(events.Log{Level: events.LevelInfo, Text: fmt.Sprintf(format, args...)})
 }
 
 // ReportWarning prints a warning.
 func (y *YoutubeDL) ReportWarning(format string, args ...any) {
-	if y.opts.NoWarnings || y.opts.Quiet {
-		return
-	}
 	y.mu.Lock()
 	y.Warnings++
 	y.mu.Unlock()
-	msg := fmt.Sprintf(format, args...)
-	fmt.Fprintf(os.Stderr, "WARNING: %s\n", msg)
+	y.sink.Log(events.Log{Level: events.LevelWarning, Text: fmt.Sprintf(format, args...)})
 }
 
 // ReportError prints an error and increments the error count.
@@ -118,16 +126,12 @@ func (y *YoutubeDL) ReportError(format string, args ...any) {
 	y.mu.Lock()
 	y.Errors++
 	y.mu.Unlock()
-	msg := fmt.Sprintf(format, args...)
-	fmt.Fprintf(os.Stderr, "ERROR: %s\n", msg)
+	y.sink.Log(events.Log{Level: events.LevelError, Text: fmt.Sprintf(format, args...)})
 }
 
 // WriteDebug prints a debug message when verbose.
 func (y *YoutubeDL) WriteDebug(format string, args ...any) {
-	if !y.opts.Verbose {
-		return
-	}
-	fmt.Fprintf(os.Stderr, "[debug] "+format+"\n", args...)
+	y.sink.Log(events.Log{Level: events.LevelDebug, Text: fmt.Sprintf(format, args...)})
 }
 
 // ---------------------------------------------------------------------------

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
-	"github.com/elfeo/yt-dlp-go/internal/networking"
-	"github.com/elfeo/yt-dlp-go/internal/options"
-	"github.com/elfeo/yt-dlp-go/internal/utils"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/networking"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/options"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/utils"
 )
 
 // Base implements the shared machinery of yt-dlp's InfoExtractor.

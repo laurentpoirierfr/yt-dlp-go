@@ -36,6 +36,10 @@ type Options struct {
 	ProgressWithNewline bool
 	Noprogress          bool
 
+	// Terminal interface (extension, not in yt-dlp)
+	TUI   bool
+	NoTUI bool
+
 	// Error handling / control flow
 	IgnoreErrors    IgnoreErrorsMode
 	MaxDownloads    int

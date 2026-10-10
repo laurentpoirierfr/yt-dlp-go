@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/elfeo/yt-dlp-go/internal/extractor"
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
-	"github.com/elfeo/yt-dlp-go/internal/utils"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/extractor"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/utils"
 )
 
 // YoutubeIE is the main YouTube video extractor.
@@ -130,18 +130,18 @@ func (ie *YoutubeIE) RealExtract(rawURL string) (*infodict.InfoDict, error) {
 
 	// 7. Assemble InfoDict ---------------------------------------------
 	info := &infodict.InfoDict{
-		ID:               videoID,
-		DisplayID:        videoID,
-		Title:            title,
-		Description:      description,
-		Duration:         duration,
-		Formats:          formats,
-		Subtitles:        subs,
+		ID:                videoID,
+		DisplayID:         videoID,
+		Title:             title,
+		Description:       description,
+		Duration:          duration,
+		Formats:           formats,
+		Subtitles:         subs,
 		AutomaticCaptions: autoCaps,
-		WebpageURL:       webpageURL,
-		OriginalURL:      rawURL,
-		Extractor:        ie.IEName(),
-		ExtractorKey:     ie.IEKey(),
+		WebpageURL:        webpageURL,
+		OriginalURL:       rawURL,
+		Extractor:         ie.IEName(),
+		ExtractorKey:      ie.IEKey(),
 	}
 	if duration > 0 {
 		info.DurationString = utils.FormatDurationString(duration)
@@ -178,6 +178,7 @@ func (ie *YoutubeIE) extractPlayerResponses(
 	playerURL := ie.playerURL
 	queue := append([]string{}, clients...)
 	skipped := map[string]string{}
+	ie.visitorData = extractVisitorData(webpageYTCfg, initialPR)
 
 	for len(queue) > 0 {
 		clientName := queue[0]
@@ -199,6 +200,9 @@ func (ie *YoutubeIE) extractPlayerResponses(
 			continue
 		}
 		ytcfg := ie.getYtcfg(client, videoID)
+		if ie.visitorData == "" {
+			ie.visitorData = extractVisitorData(ytcfg)
+		}
 		if playerURL == "" {
 			playerURL = ie.extractPlayerURL(webpageYTCfg, ytcfg)
 		}
@@ -263,10 +267,10 @@ func (ie *YoutubeIE) extractPlayerResponses(
 
 func (ie *YoutubeIE) extractPlayerResponse(c *Client, videoID string, ytcfg map[string]any) (map[string]any, error) {
 	body := map[string]any{
-		"context":         innertubeContext(c, ytcfg),
-		"videoId":         videoID,
-		"contentCheckOk":  true,
-		"racyCheckOk":     true,
+		"context":        innertubeContext(c, ytcfg),
+		"videoId":        videoID,
+		"contentCheckOk": true,
+		"racyCheckOk":    true,
 	}
 	playback := map[string]any{
 		"contentPlaybackContext": map[string]any{

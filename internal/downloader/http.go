@@ -8,26 +8,34 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
-	"github.com/elfeo/yt-dlp-go/internal/networking"
-	"github.com/elfeo/yt-dlp-go/internal/options"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/events"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/networking"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/options"
 )
+
+// progressInterval is the minimum delay between StatusRunning events.
+const progressInterval = 100 * time.Millisecond
 
 // HTTPDownloader downloads plain HTTP(S) formats, with resume support.
 type HTTPDownloader struct {
 	client *networking.Client
 	opts   *options.Options
+	sink   events.Sink
 }
 
-// NewHTTP builds an HTTP downloader.
-func NewHTTP(client *networking.Client, opts *options.Options) *HTTPDownloader {
-	return &HTTPDownloader{client: client, opts: opts}
+// NewHTTP builds an HTTP downloader. sink may be nil (events are discarded).
+func NewHTTP(client *networking.Client, opts *options.Options, sink events.Sink) *HTTPDownloader {
+	if sink == nil {
+		sink = events.NopSink{}
+	}
+	return &HTTPDownloader{client: client, opts: opts, sink: sink}
 }
 
 // Download writes the selected formats of info to disk. When several formats
 // are requested (video+audio), they are written to temporary part files and
-// the caller is expected to merge them; the returned part list is stored in
-// info via RequestedDownloads.
+// the caller is expected to merge them; the part list is stored in
+// info.RequestedDownloads.
 func (d *HTTPDownloader) Download(info *infodict.InfoDict, formats []infodict.Format) error {
 	if len(formats) == 0 {
 		f := infodict.Format{URL: info.URL, Ext: info.Ext}
@@ -36,7 +44,6 @@ func (d *HTTPDownloader) Download(info *infodict.InfoDict, formats []infodict.Fo
 	if len(formats) == 1 {
 		return d.downloadOne(info, formats[0], info.Filepath)
 	}
-	// multiple streams -> download parts
 	for i, f := range formats {
 		part := fmt.Sprintf("%s.f%d.%s", info.Filepath, i, orExt(f.Ext))
 		if err := d.downloadOne(info, f, part); err != nil {
@@ -45,7 +52,6 @@ func (d *HTTPDownloader) Download(info *infodict.InfoDict, formats []infodict.Fo
 		info.RequestedDownloads = append(info.RequestedDownloads, infodict.Format{
 			URL: f.URL, Ext: f.Ext, FormatID: f.FormatID,
 		})
-		_ = part
 	}
 	return nil
 }
@@ -60,13 +66,10 @@ func orExt(e string) string {
 func (d *HTTPDownloader) downloadOne(info *infodict.InfoDict, f infodict.Format, dest string) error {
 	url := f.URL
 	if url == "" {
-		return fmt.Errorf("no URL to download for format %s", f.FormatID)
+		return fmt.Errorf("no URL to download for format %q", f.FormatID)
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
-	}
-	if d.opts.NoProgress == false {
-		fmt.Fprintf(os.Stderr, "[download] Destination: %s\n", dest)
 	}
 
 	var offset int64
@@ -85,12 +88,12 @@ func (d *HTTPDownloader) downloadOne(info *infodict.InfoDict, f infodict.Format,
 	}
 	resp, err := d.client.Get(url, headers)
 	if err != nil {
+		d.emitError(info, dest, offset, err)
 		return err
 	}
 	defer resp.Close()
 
 	if offset > 0 && resp.StatusCode != 206 {
-		// server ignored the range; restart
 		offset = 0
 	}
 
@@ -106,45 +109,78 @@ func (d *HTTPDownloader) downloadOne(info *infodict.InfoDict, f infodict.Format,
 	}
 	defer out.Close()
 
-	total := resp.HeaderGet("Content-Length")
+	d.sink.Progress(events.Progress{
+		Info: info, Filename: dest, Status: events.StatusStarted,
+		Downloaded: offset, Total: totalSize(resp, offset),
+	})
+
 	start := time.Now()
-	n, err := io.Copy(out, resp.Body())
-	if err != nil {
-		return err
-	}
-	if d.opts.NoProgress == false {
-		elapsed := time.Since(start).Seconds()
-		if elapsed <= 0 {
-			elapsed = 0.001
+	downloaded := offset
+	total := totalSize(resp, offset)
+	last := time.Time{}
+	buf := make([]byte, 256*1024)
+	for {
+		n, rerr := resp.Body().Read(buf)
+		if n > 0 {
+			if _, werr := out.Write(buf[:n]); werr != nil {
+				d.emitError(info, dest, downloaded, werr)
+				return werr
+			}
+			downloaded += int64(n)
+			now := time.Now()
+			if now.Sub(last) >= progressInterval {
+				last = now
+				d.sink.Progress(progressEvent(info, dest, downloaded, total, start, events.StatusRunning))
+			}
 		}
-		fmt.Fprintf(os.Stderr, "[download] 100%% of %s in %s at %.2fKiB/s\n",
-			humanSize(offset+n), humanDuration(time.Since(start)),
-			float64(n)/1024/elapsed)
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			d.emitError(info, dest, downloaded, rerr)
+			return rerr
+		}
 	}
-	_ = total
+
+	d.sink.Progress(progressEvent(info, dest, downloaded, total, start, events.StatusFinished))
 	return nil
 }
 
-func humanSize(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%dB", n)
+func totalSize(resp *networking.Response, offset int64) int64 {
+	if cl := resp.HeaderGet("Content-Length"); cl != "" {
+		var n int64
+		fmt.Sscan(cl, &n)
+		if n > 0 {
+			return offset + n
+		}
 	}
-	div, exp := int64(unit), 0
-	for m := n / unit; m >= unit; m /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.2f%ciB", float64(n)/float64(div), "KMGTPE"[exp])
+	return -1
 }
 
-func humanDuration(d time.Duration) string {
-	secs := int(d.Seconds())
-	h := secs / 3600
-	m := (secs % 3600) / 60
-	s := secs % 60
-	if h > 0 {
-		return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+func progressEvent(info *infodict.InfoDict, dest string, downloaded, total int64, start time.Time, status events.Status) events.Progress {
+	elapsed := time.Since(start)
+	p := events.Progress{
+		Info: info, Filename: dest, Status: status,
+		Downloaded: downloaded, Total: total,
+		Elapsed: elapsed, ETA: -1,
 	}
-	return fmt.Sprintf("%02d:%02d", m, s)
+	if elapsed > 0 {
+		p.Speed = float64(downloaded) / elapsed.Seconds()
+		if total > 0 && p.Speed > 0 {
+			remaining := total - downloaded
+			if remaining > 0 {
+				p.ETA = time.Duration(float64(remaining)/p.Speed) * time.Second
+			} else {
+				p.ETA = 0
+			}
+		}
+	}
+	return p
+}
+
+func (d *HTTPDownloader) emitError(info *infodict.InfoDict, dest string, downloaded int64, err error) {
+	d.sink.Progress(events.Progress{
+		Info: info, Filename: dest, Status: events.StatusError,
+		Downloaded: downloaded, Total: -1, Err: err,
+	})
 }

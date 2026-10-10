@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
 )
 
 // formatSorter is the Go port of yt-dlp's utils.FormatSorter.

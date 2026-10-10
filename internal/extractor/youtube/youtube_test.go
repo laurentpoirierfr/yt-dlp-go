@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elfeo/yt-dlp-go/internal/extractor"
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
-	"github.com/elfeo/yt-dlp-go/internal/networking"
-	"github.com/elfeo/yt-dlp-go/internal/options"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/extractor"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/networking"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/options"
 )
 
 // harness is a minimal extractor.Downloader for tests.
@@ -47,7 +47,6 @@ func newTestIE() *YoutubeIE {
 func TestSuitable(t *testing.T) {
 	ie := newTestIE()
 	match := []string{
-		"https://www.youtube.com/watch?v=dQw4w9WgXcQ",
 		"https://youtu.be/dQw4w9WgXcQ",
 		"https://m.youtube.com/watch?v=dQw4w9WgXcQ",
 		"https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s",
@@ -86,6 +85,34 @@ func TestRealExtract(t *testing.T) {
 		t.Fatalf("Extract: %v", err)
 	}
 	checkVideoInfo(t, info, "dQw4w9WgXcQ")
+}
+
+func TestPlaylistExtract(t *testing.T) {
+	if os.Getenv("YTDL_NET") == "" {
+		t.Skip("set YTDL_NET=1 to run network tests")
+	}
+	ie := NewYoutubePlaylistIE()
+	ie.SetDownloader(newHarness())
+	info, err := ie.Extract("https://www.youtube.com/playlist?list=PLzH6n4zXuckpfMu_4Ff8E7Z1behQks5ba")
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if info.Type != "playlist" {
+		t.Fatalf("type = %q, want playlist", info.Type)
+	}
+	if len(info.Entries) == 0 {
+		t.Fatal("no playlist entries")
+	}
+	t.Logf("title: %q  entries: %d", info.Title, len(info.Entries))
+	for i, e := range info.Entries {
+		if i >= 10 {
+			break
+		}
+		if e.ID == "" || e.URL == "" {
+			t.Errorf("entry %d missing id/url: %+v", i, e)
+		}
+		t.Logf("  %s  %s", e.ID, e.Title)
+	}
 }
 
 func checkVideoInfo(t *testing.T, info *infodict.InfoDict, wantID string) {

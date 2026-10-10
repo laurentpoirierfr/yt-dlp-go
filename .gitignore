@@ -1,0 +1,47 @@
+# Videos and downloaded media
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.webm
+*.flv
+*.m4v
+*.mp3
+*.wav
+*.aac
+*.ogg
+*.m4a
+*.opus
+*.weba
+*.wma
+*.flac
+*.alac
+*.ape
+*.mid
+*.midi
+*.aiff
+*.aif
+*.wav
+
+# Common download folders
+downloads/
+download/
+media/
+videos/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+
+# Temporary / local files
+*.tmp
+*.temp
+*.log
+
+# Local test artifacts
+coverage.out
+
+# If you want to keep only source code tracked
+# Uncomment the lines below if needed:
+# *.mp4
+# *.mkv

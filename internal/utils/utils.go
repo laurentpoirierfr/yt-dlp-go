@@ -833,6 +833,36 @@ func FormatSeconds(secs float64) string {
 	return FormatDurationString(secs)
 }
 
+// FormatBytes renders a byte count in binary units, e.g. "1.96MiB".
+func FormatBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%dB", n)
+	}
+	units := "KMGTPE"
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f%ciB", float64(n)/float64(div), units[exp])
+}
+
+// FormatClock renders a duration as MM:SS or HH:MM:SS.
+func FormatClock(d time.Duration) string {
+	secs := int(d.Seconds())
+	if secs < 0 {
+		secs = 0
+	}
+	h := secs / 3600
+	m := (secs % 3600) / 60
+	s := secs % 60
+	if h > 0 {
+		return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+	}
+	return fmt.Sprintf("%02d:%02d", m, s)
+}
+
 // UnixToYYYYMMDD formats a unix timestamp as yt-dlp's upload_date.
 func UnixToYYYYMMDD(ts int64) string {
 	return time.Unix(ts, 0).UTC().Format("20060102")

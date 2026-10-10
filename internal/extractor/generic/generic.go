@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/elfeo/yt-dlp-go/internal/extractor"
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/extractor"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
 )
 
 var (

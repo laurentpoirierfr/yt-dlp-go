@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/elfeo/yt-dlp-go/internal/options"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/options"
 )
 
 func newRootCmd(o *options.Options) *cobra.Command {
@@ -93,6 +93,8 @@ func newRootCmd(o *options.Options) *cobra.Command {
 	f.BoolVarP(&o.Quiet, "quiet", "q", false, "Suppress console output")
 	f.BoolVar(&o.NoWarnings, "no-warnings", false, "Suppress warnings")
 	f.BoolVarP(&o.Verbose, "verbose", "v", false, "Print various debugging information")
+	f.BoolVar(&o.TUI, "tui", false, "Use the interactive terminal interface")
+	f.BoolVar(&o.NoTUI, "no-tui", false, "Disable the interactive terminal interface")
 	f.BoolVarP(&simulate, "simulate", "s", false, "Do not download the video")
 	f.BoolVar(&o.SkipDownload, "skip-download", false, "Do not download the video")
 	f.BoolVar(&o.NoProgress, "no-progress", false, "Do not print the progress bar")

@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
-	"github.com/elfeo/yt-dlp-go/internal/utils"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/utils"
 )
 
 var fieldRe = regexp.MustCompile(`%\(([a-zA-Z_][a-zA-Z0-9_]*)\)([#0\- +]*[0-9]*(?:\.[0-9]+)?[sdifxXoOeE])?`)

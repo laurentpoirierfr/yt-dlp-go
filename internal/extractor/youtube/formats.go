@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/elfeo/yt-dlp-go/internal/infodict"
-	"github.com/elfeo/yt-dlp-go/internal/jsc"
-	"github.com/elfeo/yt-dlp-go/internal/utils"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/jsc"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/utils"
 )
 
 type streamID struct {
