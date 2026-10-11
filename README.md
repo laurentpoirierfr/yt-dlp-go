@@ -147,8 +147,14 @@ yt-dlp-go -s "URL"              # n'écrit rien sur le disque
 yt-dlp-go --get-url "URL"       # affiche l'URL du média sélectionné
 yt-dlp-go --get-title "URL"     # affiche le titre
 yt-dlp-go --get-id "URL"        # affiche l'identifiant
+yt-dlp-go --get-filename "URL"  # affiche le nom de fichier cible
 yt-dlp-go --skip-download "URL" # extrait et affiche, sans télécharger
 ```
+
+`-s/--simulate` n'écrit jamais rien sur le disque. En revanche,
+`--skip-download` ne télécharge pas le média mais écrit **quand même** les
+sidecars demandés (`--write-info-json`, `--write-description`,
+`--write-thumbnail`, sous-titres), comme yt-dlp.
 
 ## Interface terminal (IHM)
 
@@ -234,7 +240,7 @@ YTDL_JSON_PRETTY=1 yt-dlp-go -j "URL"
 ```
 
 `--write-info-json` écrit `<lecteur>.info.json` (le dictionnaire complet de la
-vidéo) à côté du fichier médiatique, après un téléchargement réussi.
+vidéo) à côté du fichier médiatique (ou avec `--skip-download`, sans le média).
 
 `--write-description` écrit la description brute dans `<lecteur>.description`.
 
