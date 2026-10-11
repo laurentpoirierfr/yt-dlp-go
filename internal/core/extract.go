@@ -281,11 +281,9 @@ func (y *YoutubeDL) processVideoResult(info *infodict.InfoDict, download bool) (
 	return info, nil
 }
 
-// processInfo builds the output filename and triggers the download.
+// processInfo builds the output filename, downloads the media (unless
+// --skip-download) and writes any requested sidecars.
 func (y *YoutubeDL) processInfo(info *infodict.InfoDict) error {
-	if y.opts.SkipDownload {
-		return nil
-	}
 	if y.opts.DownloadArchive != "" && !y.forceDownload(info) && y.inArchive(info) {
 		y.ToScreen("[download] %s has already been recorded in archive", archiveKey(info))
 		return nil
@@ -295,20 +293,22 @@ func (y *YoutubeDL) processInfo(info *infodict.InfoDict) error {
 		return err
 	}
 	info.Filepath = path
-	if y.downloader == nil {
-		y.ToScreen("[download] Destination: %s", path)
-		return nil
-	}
-	formats := info.RequestedFormats
-	if len(formats) == 0 {
-		formats = info.SelectedFormats
-	}
-	if err := y.downloader(info, formats); err != nil {
-		return err
-	}
-	if y.opts.DownloadArchive != "" {
-		if err := y.addArchive(info); err != nil {
-			y.ReportWarning("Unable to add to archive: %v", err)
+	if !y.opts.SkipDownload {
+		if y.downloader == nil {
+			y.ToScreen("[download] Destination: %s", path)
+			return nil
+		}
+		formats := info.RequestedFormats
+		if len(formats) == 0 {
+			formats = info.SelectedFormats
+		}
+		if err := y.downloader(info, formats); err != nil {
+			return err
+		}
+		if y.opts.DownloadArchive != "" {
+			if err := y.addArchive(info); err != nil {
+				y.ReportWarning("Unable to add to archive: %v", err)
+			}
 		}
 	}
 	if y.subtitlesRequested() {

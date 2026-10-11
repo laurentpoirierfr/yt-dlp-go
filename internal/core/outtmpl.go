@@ -40,6 +40,12 @@ func (y *YoutubeDL) buildOutputPath(info *infodict.InfoDict) (string, error) {
 	return out, nil
 }
 
+// OutputPath renders the output filename for an entry without downloading it,
+// mirroring yt-dlp --get-filename.
+func (y *YoutubeDL) OutputPath(info *infodict.InfoDict) (string, error) {
+	return y.buildOutputPath(info)
+}
+
 // naPlaceholder is the value substituted for missing fields.
 func (y *YoutubeDL) naPlaceholder() string {
 	if y.opts.OuttmplNAPlaceholder != "" {
