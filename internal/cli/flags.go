@@ -151,6 +151,7 @@ func newRootCmd(o *options.Options) *cobra.Command {
 	// Metadata / subtitles
 	f.BoolVar(&writeThumb, "write-thumbnail", false, "Write thumbnail image to disk")
 	f.BoolVar(&allThumbs, "write-all-thumbnails", false, "Write all thumbnail image formats to disk")
+	f.BoolVar(&o.ListThumbnails, "list-thumbnails", false, "Simulate and list all available thumbnail formats")
 	f.BoolVar(&o.WriteInfoJSON, "write-info-json", false, "Write video metadata to a .info.json file")
 	f.BoolVar(&o.WriteDescription, "write-description", false, "Write video description to a .description file")
 	f.BoolVar(&o.WriteSubtitles, "write-subs", false, "Write subtitle file")

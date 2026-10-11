@@ -37,9 +37,7 @@ var unsupportedFlags = map[string]string{
 	"break-on-reject": "entry filtering is not implemented",
 
 	// Metadata sidecars
-	"write-thumbnail":      "thumbnail writing is not implemented yet",
-	"write-all-thumbnails": "thumbnail writing is not implemented yet",
-	"write-description":    "description sidecar writing is not implemented yet",
+	"write-description": "description sidecar writing is not implemented yet",
 }
 
 // validateConvertSubtitles normalizes and validates the --convert-subs value.

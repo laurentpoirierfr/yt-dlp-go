@@ -54,7 +54,7 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 	ydl.RegisterExtractors(ies)
 
 	simulate := (opts.Simulate != nil && *opts.Simulate) || opts.ListFormats ||
-		opts.ListSubtitles ||
+		opts.ListSubtitles || opts.ListThumbnails ||
 		opts.ForceJSON || opts.DumpSingleJSON ||
 		opts.ForceURL || opts.ForceTitle || opts.ForceID || opts.ForceFilename ||
 		opts.SkipDownload
@@ -100,6 +100,10 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 			}
 			if opts.ListSubtitles {
 				listSubtitles(info)
+				continue
+			}
+			if opts.ListThumbnails {
+				listThumbnails(info)
 				continue
 			}
 			if opts.ForceJSON || opts.DumpSingleJSON {
@@ -223,6 +227,29 @@ func listSubtitles(info *infodict.InfoDict) {
 	if len(info.Subtitles) == 0 && len(info.AutomaticCaptions) == 0 {
 		fmt.Fprintf(os.Stdout, "There are no subtitles for the requested languages for %s\n", info.ID)
 	}
+}
+
+func listThumbnails(info *infodict.InfoDict) {
+	if len(info.Thumbnails) == 0 {
+		fmt.Fprintf(os.Stdout, "There are no thumbnails for %s\n", info.ID)
+		return
+	}
+	fmt.Fprintf(os.Stdout, "Available thumbnails for %s:\n", info.ID)
+	fmt.Fprintf(os.Stdout, "%-4s%-9s%-9s%s\n", "ID", "Width", "Height", "URL")
+	for i, t := range info.Thumbnails {
+		id := t.ID
+		if id == "" {
+			id = fmt.Sprintf("%d", i)
+		}
+		fmt.Fprintf(os.Stdout, "%-4s%-9s%-9s%s\n", id, dim(t.Width), dim(t.Height), t.URL)
+	}
+}
+
+func dim(v int) string {
+	if v <= 0 {
+		return "unknown"
+	}
+	return fmt.Sprintf("%d", v)
 }
 
 func printSubtitleLangs(subs map[string][]infodict.Subtitle) {
