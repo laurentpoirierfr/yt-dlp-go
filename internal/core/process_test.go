@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
@@ -143,6 +144,57 @@ func TestProcessPlaylistBreakPerInput(t *testing.T) {
 	}
 	if got := order; !reflect.DeepEqual(got, []string{"a"}) {
 		t.Errorf("order = %v, want [a] (stop after first error)", got)
+	}
+}
+
+func TestWriteSubtitles(t *testing.T) {
+	dir := t.TempDir()
+	o := options.DefaultOptions()
+	o.WriteSubtitles = true
+	o.ConvertSubtitles = "srt"
+	o.Paths = map[string]string{"home": dir}
+	ydl := New(o)
+	ydl.SetDownloader(func(info *infodict.InfoDict, formats []infodict.Format) error { return nil })
+	info := mkVideo("vid1")
+	info.Title = "T"
+	info.Subtitles = map[string][]infodict.Subtitle{
+		"en": {
+			{Ext: "json3", Data: `{"events":[{"tStartMs":0,"dDurationMs":1000,"segs":[{"utf8":"Hi"}]}]}`},
+			{Ext: "vtt", Data: "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHi\n"},
+		},
+		"fr": {{Ext: "vtt", Data: "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nSalut\n"}},
+	}
+	if err := ydl.processInfo(info); err != nil {
+		t.Fatalf("processInfo: %v", err)
+	}
+	en := filepath.Join(dir, "T [vid1].en.srt")
+	if data, err := os.ReadFile(en); err != nil {
+		t.Fatalf("en.srt not written: %v", err)
+	} else if !strings.Contains(string(data), "00:00:00,000 --> 00:00:01,000\nHi") {
+		t.Errorf("en.srt content = %q", string(data))
+	}
+	if _, err := os.ReadFile(filepath.Join(dir, "T [vid1].fr.srt")); err != nil {
+		t.Errorf("fr.srt not written: %v", err)
+	}
+	if info.RequestedSubtitles["en"].Ext != "srt" {
+		t.Errorf("requested_subtitles en ext = %q, want srt", info.RequestedSubtitles["en"].Ext)
+	}
+}
+
+func TestWriteSubtitlesSkipsWhenDisabled(t *testing.T) {
+	dir := t.TempDir()
+	o := options.DefaultOptions()
+	o.Paths = map[string]string{"home": dir}
+	ydl := New(o)
+	ydl.SetDownloader(func(info *infodict.InfoDict, formats []infodict.Format) error { return nil })
+	info := mkVideo("vid2")
+	info.Title = "T2"
+	info.Subtitles = map[string][]infodict.Subtitle{"en": {{Ext: "vtt", Data: "WEBVTT\n"}}}
+	if err := ydl.processInfo(info); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "T2 [vid2].en.vtt")); err == nil {
+		t.Error("subtitle written without --write-subs")
 	}
 }
 
