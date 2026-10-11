@@ -18,6 +18,7 @@ func newRootCmd(o *options.Options) *cobra.Command {
 		continueDL   bool
 		addHeaders   []string
 		forceOver    bool
+		yesPlaylist  bool
 		outTmpl      = o.Outtmpl["default"]
 	)
 
@@ -55,6 +56,9 @@ func newRootCmd(o *options.Options) *cobra.Command {
 				v := forceOver
 				o.Overwrites = &v
 			}
+			if yesPlaylist {
+				o.NoPlaylist = false
+			}
 			if o.HTTPHeaders == nil {
 				o.HTTPHeaders = map[string]string{}
 			}
@@ -63,7 +67,10 @@ func newRootCmd(o *options.Options) *cobra.Command {
 					o.HTTPHeaders[strings.TrimSpace(k)] = strings.TrimSpace(v)
 				}
 			}
-			return nil
+			if err := validateUnsupported(cmd); err != nil {
+				return err
+			}
+			return validateConvertSubtitles(o)
 		},
 	}
 
@@ -129,10 +136,11 @@ func newRootCmd(o *options.Options) *cobra.Command {
 	// Filesystem behaviour
 	f.BoolVar(&continueDL, "continue", false, "Resume partially downloaded files")
 	f.BoolVar(&forceOver, "force-overwrites", false, "Overwrite all video and metadata files")
+	f.StringVar(&o.DownloadArchive, "download-archive", o.DownloadArchive, "Download videos listed in file, and write each downloaded one to it")
 
 	// Playlist
 	f.BoolVar(&o.NoPlaylist, "no-playlist", false, "Download only the video if a URL refers to both")
-	f.BoolVar(new(bool), "yes-playlist", false, "Download the playlist, if the URL refers to a video and a playlist")
+	f.BoolVar(&yesPlaylist, "yes-playlist", false, "Download the playlist, if the URL refers to a video and a playlist")
 	f.IntVar(&o.PlaylistStart, "playlist-start", o.PlaylistStart, "Playlist video to start at")
 	f.IntVar(&o.PlaylistEnd, "playlist-end", o.PlaylistEnd, "Playlist video to end at")
 	f.StringVarP(&o.PlaylistItems, "playlist-items", "I", o.PlaylistItems, "Playlist video items to download")
@@ -143,15 +151,24 @@ func newRootCmd(o *options.Options) *cobra.Command {
 	// Metadata / subtitles
 	f.BoolVar(&writeThumb, "write-thumbnail", false, "Write thumbnail image to disk")
 	f.BoolVar(&allThumbs, "write-all-thumbnails", false, "Write all thumbnail image formats to disk")
+	f.BoolVar(&o.ListThumbnails, "list-thumbnails", false, "Simulate and list all available thumbnail formats")
 	f.BoolVar(&o.WriteInfoJSON, "write-info-json", false, "Write video metadata to a .info.json file")
 	f.BoolVar(&o.WriteDescription, "write-description", false, "Write video description to a .description file")
 	f.BoolVar(&o.WriteSubtitles, "write-subs", false, "Write subtitle file")
 	f.BoolVar(&o.WriteAutoSubs, "write-auto-subs", false, "Write automatically generated subtitle file")
 	f.BoolVar(&o.AllSubtitles, "all-subs", false, "Download all the available subtitles")
-	f.StringSliceVar(&o.SubtitlesLangs, "sub-langs", nil, "Languages of the subtitles to download")
-	f.StringVar(&o.SubtitlesFormat, "sub-format", o.SubtitlesFormat, "Subtitle format")
+	f.BoolVar(&o.ListSubtitles, "list-subs", false, "List available subtitles of each video")
+	f.StringSliceVar(&o.SubtitlesLangs, "sub-langs", nil, "Languages of the subtitles to download (can be regex) or \"all\"")
+	f.StringVar(&o.SubtitlesFormat, "sub-format", o.SubtitlesFormat, "Subtitle format preference separated by \"/\"")
+	f.StringVar(&o.ConvertSubtitles, "convert-subs", o.ConvertSubtitles, "Convert the subtitles to another format (srt, vtt)")
+	f.StringVar(&o.ConvertSubtitles, "convert-subtitles", o.ConvertSubtitles, "Alias of --convert-subs")
 
 	f.StringVar(&o.FFmpegLocation, "ffmpeg-location", o.FFmpegLocation, "Location of the ffmpeg binary")
+
+	f.BoolVarP(&o.ExtractAudio, "extract-audio", "x", false, "Convert video files to audio-only files")
+	f.StringVar(&o.AudioFormat, "audio-format", o.AudioFormat, "Best audio format to be used when -x is used (best, mp3, aac, m4a, opus, flac, wav...)")
+	f.StringVar(&o.AudioQuality, "audio-quality", o.AudioQuality, "Specify ffmpeg audio quality, a value between 0 (best) and 9 (worst), or a bitrate")
+	f.BoolVarP(&o.KeepVideo, "keep-video", "k", false, "Keep the video file on disk after post-processing")
 
 	return cmd
 }

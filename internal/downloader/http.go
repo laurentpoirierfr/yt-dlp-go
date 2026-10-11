@@ -79,6 +79,9 @@ func (d *HTTPDownloader) downloadOne(info *infodict.InfoDict, f infodict.Format,
 	if d.opts.ContinueDL != nil {
 		cont = *d.opts.ContinueDL
 	}
+	if d.opts.Overwrites != nil && *d.opts.Overwrites {
+		cont = false
+	}
 	offset := int64(0)
 	if cont {
 		if st, err := os.Stat(dest); err == nil {

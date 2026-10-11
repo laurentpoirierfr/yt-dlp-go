@@ -22,9 +22,13 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 | Pipeline de sélection de formats (`-f`, `-S`) | Fonctionnel |
 | Téléchargement HTTP + fusion ffmpeg | Fonctionnel |
 | Métadonnées JSON (`-j`, `-J`) | Fonctionnel |
-| Sous-titres | Extraction oui, écriture sur disque en cours |
-| Playlists | Pipeline prêt, extracteur YouTube (1re page) fonctionnel |
-| Post-traitements (audio, remux) | Partiel (`--remux-video`, fusion) |
+| Sidecar `.info.json` (`--write-info-json`) | Fonctionnel |
+| Vignettes (`--write-thumbnail`, `--write-all-thumbnails`, `--list-thumbnails`) | Fonctionnel |
+| Sous-titres (`--write-subs`, `--write-auto-subs`, `--all-subs`, `--sub-langs`, `--sub-format`, `--convert-subs`, `--list-subs`) | Fonctionnel |
+| Playlists | Complet (pagination, plages/items, reverse/random, archive) |
+| Post-traitements (audio, remux) | Fusion ffmpeg + extraction audio (`-x`) ; `--remux-video` refusé |
+| Noms de fichiers (gabarits, `--restrict/windows/trim-filenames`) | Fonctionnel |
+| Options non implémentées | Refusées explicitement (plus de no-op silencieux) |
 | Interface terminal (IHM Bubble Tea) | Fonctionnelle |
 
 ## Prérequis
@@ -212,13 +216,31 @@ yt-dlp-go -j "URL"
 # JSON par URL (playlist entière en un objet)
 yt-dlp-go -J "URL"
 
+# Écrire un sidecar <video>.info.json à côté du fichier téléchargé
+yt-dlp-go --write-info-json "URL"
+
+# Télécharger la vignette (meilleure) ou toutes les vignettes
+yt-dlp-go --write-thumbnail "URL"
+yt-dlp-go --write-all-thumbnails "URL"
+
+# Lister les vignettes disponibles sans télécharger
+yt-dlp-go --list-thumbnails "URL"
+
 # Forcer un JSON lisible
 YTDL_JSON_PRETTY=1 yt-dlp-go -j "URL"
 ```
 
-L'écriture des métadonnées sur disque (`--write-info-json`,
-`--write-description`, `--write-thumbnail`) est reconnue par l'interface mais
-pas encore implémentée par le pipeline.
+`--write-info-json` écrit `<lecteur>.info.json` (le dictionnaire complet de la
+vidéo) à côté du fichier médiatique, après un téléchargement réussi.
+
+`--write-thumbnail` écrit la meilleure vignette sous `<lecteur>.<ext>` ;
+`--write-all-thumbnails` écrit chaque vignette disponible sous
+`<lecteur>.<index>.<ext>` (les vignettes indisponibles sont ignorées avec un
+avertissement). `--list-thumbnails` affiche les vignettes disponibles sans rien
+télécharger.
+
+`--write-description` n'est pas encore implémenté : il est **refusé
+explicitement** (erreur) plutôt qu'ignoré silencieusement.
 
 ## Noms et dossiers de sortie
 
@@ -253,10 +275,18 @@ Champs disponibles : `title`, `id`, `ext`, `display_id`, `duration`,
 `format_id`, `format`, `resolution`, `width`, `height`, `playlist`,
 `playlist_index`, `playlist_id`, `view_count`, `like_count`, `description`.
 
+Le gabarit accepte les spécificateurs de format (`%(playlist_index)02d`), une
+valeur par défaut alternative (`%(uploader|inconnu)s`) et le placeholder pour
+champ absent (`NA`, configurable). Les caractères interdits par le système de
+fichiers sont automatiquement remplacés ; `--restrict-filenames` limite à
+`[A-Za-z0-9._-]`, `--windows-filenames` retire les points/espaces finaux et
+`--trim-filenames N` limite la longueur.
+
 ## Parties et playlists
 
-Le pipeline de traitement des playlists est opérationnel. Exemples d'appels
-(le support natif de l'extracteur YouTube est en cours d'ajout) :
+Le pipeline de traitement des playlists est opérationnel, avec pagination
+automatique (les longues playlists sont lues page par page jusqu'à couvrir la
+fenêtre demandée) :
 
 ```console
 # Toute la playlist
@@ -277,6 +307,9 @@ yt-dlp-go -I "1,3,5,-1" "URL"    # sélection explicite (dernier = -1)
 yt-dlp-go --playlist-reverse "URL"
 yt-dlp-go --playlist-random "URL"
 
+# Arrêter au premier élément déjà téléchargé
+yt-dlp-go --download-archive archive.txt --break-on-existing "URL"
+
 # Lister sans télécharger
 yt-dlp-go --flat-playlist -J "URL"
 
@@ -286,25 +319,34 @@ yt-dlp-go -o "%(playlist)s/%(playlist_index)02d - %(title)s.%(ext)s" "URL"
 
 ## Sous-titres
 
-L'extraction des sous-titres (manuels et automatiques) est disponible dans les
-métadonnées (`-j`/`-J`). L'écriture sur disque des fichiers `.srt`/`.vtt` est en
-cours.
+Les sous-titres (manuels et automatiques) sont extraits dans les métadonnées
+(`-j`/`-J`) et peuvent être écrits sur disque aux formats `json3`, `srv1`,
+`srv2`, `srv3`, `ttml` et `vtt`, avec conversion optionnelle vers `srt`/`vtt`.
 
 ```console
 # Toutes les langues disponibles
 yt-dlp-go --all-subs "URL"
 
-# Langues précises
+# Langues précises (accepter aussi une regex, préfixe "-" pour exclure)
 yt-dlp-go --sub-langs "fr,en" --write-subs "URL"
 
 # Sous-titres automatiques
 yt-dlp-go --write-auto-subs --sub-langs "en" "URL"
 
-# Format préféré
-yt-dlp-go --sub-format "srt/vtt/best" "URL"
+# Formater la préférence et convertir
+yt-dlp-go --write-subs --sub-langs "en" --sub-format "vtt/best" --convert-subs srt "URL"
+
+# Lister les langues disponibles sans télécharger
+yt-dlp-go --list-subs "URL"
 ```
 
-En attendant l'écriture directe, inspectez les pistes disponibles via le JSON :
+Les fichiers sont écrits à côté du média sous la forme `<base>.<lang>.<ext>`
+(par exemple `Ma vidéo [id].fr.srt`). `--sub-format` exprime une préférence
+séparée par `/` ; les formats non convertibles sont ignorés lors de
+`--convert-subs`. `--sub-langs all` (défaut) sélectionne toutes les langues,
+`-live_chat` permet d'en exclure.
+
+Inspectez aussi les pistes disponibles via le JSON :
 
 ```console
 yt-dlp-go -j "URL" | grep -o '"subtitles".*'
@@ -343,8 +385,8 @@ yt-dlp-go -q "URL"
 
 ## Post-traitement
 
-La fusion vidéo + audio via ffmpeg est fonctionnelle. Le remux
-(`--remux-video`) et l'extraction audio sont en cours.
+La fusion vidéo + audio et l'extraction audio via ffmpeg sont fonctionnelles.
+Le remux (`--remux-video`) est encore en cours.
 
 ```console
 # Conteneur de fusion
@@ -352,7 +394,24 @@ yt-dlp-go --merge-output-format mp4 -f "bestvideo+bestaudio" "URL"
 
 # Emplacement de ffmpeg
 yt-dlp-go --ffmpeg-location /usr/bin/ffmpeg "URL"
+
+# Audio seul : conversion vers un format donné (le fichier d'origine est
+# supprimé après conversion)
+yt-dlp-go -x --audio-format mp3 "URL"
+
+# Qualité (0 = meilleur, 9 = pire) ou débit explicite
+yt-dlp-go -x --audio-format mp3 --audio-quality 2 "URL"
+yt-dlp-go -x --audio-format flac --audio-quality 192K "URL"
+
+# Sans --audio-format, seule la vidéo est retirée (conteneur conservé)
+yt-dlp-go -x "URL"
+
+# Conserver le fichier vidéo d'origine (-k/--keep-video)
+yt-dlp-go -x --audio-format opus -k "URL"
 ```
+
+Formats audio supportés : `best`, `aac`, `aiff`, `alac`, `flac`, `m4a`, `mp3`,
+`ogg`, `opus`, `vorbis`, `wav`, `wma`.
 
 ## Inspection de la configuration
 
@@ -362,31 +421,49 @@ yt-dlp-go --help
 
 ## Compatibilité des options avec yt-dlp
 
-Les options suivantes sont reconnues (mêmes noms et sémantique que yt-dlp) :
+Les options suivantes sont reconnues avec les mêmes noms que yt-dlp.
+
+**Prise en charge complète :**
 
 ```
 Sortie      -o/--output, -P/--paths, --id, --restrict-filenames,
             --windows-filenames, --trim-filenames, --no-part
 Formats     -f/--format, -S/--format-sort, --format-sort-force,
-            --prefer-free-formats, --merge-output-format, --remux-video,
-            --check-formats, --ignore-no-formats-error
+            --prefer-free-formats
 Simulation  -s/--simulate, --skip-download, --no-progress, --get-url,
             --get-title, --get-id, --get-filename
 JSON        -j/--dump-json, -J/--dump-single-json, -F/--list-formats
-Erreurs     -i/--ignore-errors, --break-on-existing, --break-on-reject,
-            --break-per-input
+Métadonnées --write-info-json
+Vignettes   --write-thumbnail, --write-all-thumbnails, --list-thumbnails
+Erreurs     -i/--ignore-errors
 Réseau      --proxy, --socket-timeout, --user-agent, --add-header,
-            --no-check-certificate, --limit-rate, --http-chunk-size,
-            --concurrent-fragments, --retries, --fragment-retries,
-            --extractor-retries, --continue, --force-overwrites
-Playlist    --no-playlist, --playlist-start, --playlist-end,
+            --no-check-certificate, --retries, --continue, --force-overwrites
+Playlist    --no-playlist, --yes-playlist, --playlist-start, --playlist-end,
             -I/--playlist-items, --playlist-reverse, --playlist-random,
             --flat-playlist
-Métadonnées --write-thumbnail, --write-all-thumbnails, --write-info-json,
-            --write-description, --write-subs, --write-auto-subs,
-            --all-subs, --sub-langs, --sub-format
-Divers      -q/--quiet, -v/--verbose, --ffmpeg-location, --tui, --no-tui
+Archives    --download-archive, --break-on-existing, --break-per-input
+Audio       -x/--extract-audio, --audio-format, --audio-quality,
+            -k/--keep-video, --ffmpeg-location
+Sous-titres --write-subs, --write-auto-subs, --all-subs, --sub-langs,
+            --sub-format, --convert-subs/--convert-subtitles, --list-subs
+Divers      -q/--quiet, -v/--verbose, --tui, --no-tui
 ```
+
+Par défaut, la première erreur arrête le programme ; `-i/--ignore-errors`
+poursuit le traitement des URL suivantes.
+
+`-I/--playlist-items` accepte les plages `1:10`, les pas `1:10:2`, les indices
+négatifs (depuis la fin, ex. `-1` = dernier) et l'ancienne syntaxe `1-3`.
+
+Les longues playlists sont paginées automatiquement : avec
+`--playlist-start/end/items` ne portant que sur le début, la lecture s'arrête
+dès que la fenêtre est couverte ; `--playlist-reverse`, `--playlist-random` ou
+des indices négatifs nécessitent la lecture complète.
+
+**Reconnues pour compatibilité mais pas encore implémentées :** les définir
+provoque une erreur explicite au lieu d'être ignorées silencieusement
+(ex. `--remux-video`, `--merge-output-format`, `--limit-rate`,
+`--write-description`, `--break-on-reject`).
 
 ## Architecture
 
@@ -395,7 +472,8 @@ cmd/yt-dlp/            Point d'entrée du binaire
 internal/cli/          Commandes cobra et correspondance des options
 internal/core/         Pipeline YoutubeDL (extract, process, format selector)
 internal/downloader/   Téléchargement HTTP (reprise, fusion des parts)
-internal/postprocessor/ Post-traitements (fusion ffmpeg)
+internal/postprocessor/ Post-traitements (fusion ffmpeg, extraction audio)
+internal/subtitles/    Sélection des langues et conversion VTT/SRT/json3
 internal/events/       Flux d'événements (progress, postprocess, logs)
 internal/render/       Sink texte reproduisant la sortie CLI classique
 internal/tui/          Interface plein écran Bubble Tea (logo, barres, logs)

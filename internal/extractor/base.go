@@ -39,7 +39,19 @@ type Base struct {
 	NetrcMachine string
 	// Description is the IE description (--list-extractors).
 	Description string
+
+	// maxEntries caps how many playlist entries an extractor should collect
+	// before stopping pagination (0 = fetch everything).
+	maxEntries int
 }
+
+// SetPlaylistMaxEntries caps the number of playlist entries the extractor must
+// collect (0 means no cap). It lets the core stop paginating as soon as the
+// requested window (--playlist-start/end/items) is covered.
+func (b *Base) SetPlaylistMaxEntries(n int) { b.maxEntries = n }
+
+// PlaylistMaxEntries returns the current playlist entry cap.
+func (b *Base) PlaylistMaxEntries() int { return b.maxEntries }
 
 // IEKey returns the lowercase extractor key (e.g. "youtube").
 func (b *Base) IEKey() string {

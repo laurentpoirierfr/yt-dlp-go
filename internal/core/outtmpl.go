@@ -1,17 +1,21 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/utils"
 )
 
-var fieldRe = regexp.MustCompile(`%\(([a-zA-Z_][a-zA-Z0-9_]*)\)([#0\- +]*[0-9]*(?:\.[0-9]+)?[sdifxXoOeE])?`)
+// fieldRe matches a %(field)s placeholder, optionally with a "|default"
+// alternative and a printf-style conversion (e.g. "%(index)02d").
+var fieldRe = regexp.MustCompile(`%\(([^)]*)\)([#0\- +]*[0-9]*(?:\.[0-9]+)?[sdifxXoOeEjJb]?)?`)
 
 // buildOutputPath renders the output template for an info dict.
 func (y *YoutubeDL) buildOutputPath(info *infodict.InfoDict) (string, error) {
@@ -25,6 +29,7 @@ func (y *YoutubeDL) buildOutputPath(info *infodict.InfoDict) (string, error) {
 	out := y.expandTemplate(tmpl, info)
 	out = y.expandTemplate(out, info)
 	out = filepath.FromSlash(out)
+	out = y.sanitizePath(out)
 	if !filepath.IsAbs(out) {
 		base := y.opts.Paths["home"]
 		if base == "" {
@@ -35,97 +40,186 @@ func (y *YoutubeDL) buildOutputPath(info *infodict.InfoDict) (string, error) {
 	return out, nil
 }
 
-func (y *YoutubeDL) expandTemplate(tmpl string, info *infodict.InfoDict) string {
-	out := fieldRe.ReplaceAllStringFunc(tmpl, func(m string) string {
-		sub := fieldRe.FindStringSubmatch(m)
-		key := sub[1]
-		val := infoField(info, key)
-		return val
-	})
-	return out
+// naPlaceholder is the value substituted for missing fields.
+func (y *YoutubeDL) naPlaceholder() string {
+	if y.opts.OuttmplNAPlaceholder != "" {
+		return y.opts.OuttmplNAPlaceholder
+	}
+	return "NA"
 }
 
-// infoField returns the string value of a template field.
-func infoField(info *infodict.InfoDict, key string) string {
+func (y *YoutubeDL) expandTemplate(tmpl string, info *infodict.InfoDict) string {
+	return fieldRe.ReplaceAllStringFunc(tmpl, func(m string) string {
+		sub := fieldRe.FindStringSubmatch(m)
+		spec, verb := sub[1], sub[2]
+		if spec == "" {
+			return ""
+		}
+		name, def, hasDef := spec, "", false
+		if i := strings.IndexByte(spec, '|'); i >= 0 {
+			name, def, hasDef = spec[:i], spec[i+1:], true
+		}
+		val, known := infoField(info, name)
+		if val == "" && hasDef {
+			val = y.expandTemplate(def, info)
+		}
+		if val == "" && !known {
+			val = y.naPlaceholder()
+		}
+		if verb != "" {
+			val = applyVerb(val, verb)
+		}
+		return y.sanitizeValue(val)
+	})
+}
+
+// sanitizeValue cleans a substituted field value so it can never introduce a
+// path separator or illegal character into the rendered name.
+func (y *YoutubeDL) sanitizeValue(v string) string {
+	if v == "" {
+		return ""
+	}
+	return sanitizeFilename(v, y.opts.RestrictFilenames, y.opts.WindowsFilenames)
+}
+
+// applyVerb formats a value with a printf-style conversion suffix such as
+// "02d", ".2f", "s" or "j".
+func applyVerb(val, verb string) string {
+	if verb == "" {
+		return val
+	}
+	format := "%" + verb
+	switch verb[len(verb)-1] {
+	case 'j', 'J':
+		b, err := json.Marshal(val)
+		if err != nil {
+			return val
+		}
+		return string(b)
+	case 'd', 'i', 'o', 'O', 'x', 'X', 'b', 'c':
+		n, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64)
+		if err != nil {
+			return val
+		}
+		return fmt.Sprintf(format, n)
+	case 'f', 'e', 'E', 'g', 'G':
+		f, err := strconv.ParseFloat(strings.TrimSpace(val), 64)
+		if err != nil {
+			return val
+		}
+		return fmt.Sprintf(format, f)
+	default: // 's'
+		return fmt.Sprintf(format, val)
+	}
+}
+
+// infoField returns the string value of a template field and whether the field
+// is recognized and carries a value. A recognized-but-empty value (known true,
+// value "") is left empty; a value-less numeric field (known false) falls back
+// to the NA placeholder or the "|default" alternative.
+func infoField(info *infodict.InfoDict, key string) (string, bool) {
 	switch key {
 	case "title":
-		return info.Title
+		return info.Title, true
 	case "id":
-		if y := info.ID; y != "" {
-			return y
-		}
-		return "NA"
+		return info.ID, info.ID != ""
 	case "ext":
 		if info.Ext != "" {
-			return info.Ext
+			return info.Ext, true
 		}
-		return "mp4"
+		return "mp4", true
 	case "display_id":
-		return info.DisplayID
+		return info.DisplayID, true
 	case "duration":
 		if info.Duration > 0 {
-			return formatSeconds(info.Duration)
+			return formatSeconds(info.Duration), true
 		}
-		return "NA"
+		return "", false
 	case "duration_string":
-		return info.DurationString
+		return info.DurationString, true
 	case "uploader":
-		return info.Uploader
+		return info.Uploader, true
 	case "uploader_id":
-		return info.UploaderID
+		return info.UploaderID, true
 	case "channel":
-		return info.Channel
+		return info.Channel, true
 	case "channel_id":
-		return info.ChannelID
+		return info.ChannelID, true
 	case "upload_date":
-		return info.UploadDate
+		return info.UploadDate, true
 	case "release_date":
-		return info.ReleaseDate
+		return info.ReleaseDate, true
 	case "extractor":
-		return info.Extractor
+		return info.Extractor, true
 	case "extractor_key":
-		return info.ExtractorKey
+		return info.ExtractorKey, true
 	case "webpage_url":
-		return info.WebpageURL
+		return info.WebpageURL, true
 	case "format_id":
-		return info.FormatID
+		return info.FormatID, true
 	case "format":
-		return info.Format
+		return info.Format, true
 	case "resolution":
-		return info.Resolution
+		return info.Resolution, true
 	case "height":
 		if info.Height > 0 {
-			return fmt.Sprintf("%d", info.Height)
+			return fmt.Sprintf("%d", info.Height), true
 		}
-		return "NA"
+		return "", false
 	case "width":
 		if info.Width > 0 {
-			return fmt.Sprintf("%d", info.Width)
+			return fmt.Sprintf("%d", info.Width), true
 		}
-		return "NA"
+		return "", false
 	case "playlist":
-		return info.Playlist
+		return info.Playlist, true
 	case "playlist_title":
-		return info.Playlist
+		return info.Playlist, true
 	case "playlist_index":
 		if info.PlaylistIndex != nil {
-			return fmt.Sprintf("%d", *info.PlaylistIndex)
+			return fmt.Sprintf("%d", *info.PlaylistIndex), true
 		}
-		return "NA"
+		return "", false
 	case "playlist_id":
-		return info.PlaylistID
+		return info.PlaylistID, true
 	case "view_count":
-		return utils.Str(info.ViewCount)
+		return utils.Str(info.ViewCount), true
 	case "like_count":
-		return utils.Str(info.LikeCount)
+		return utils.Str(info.LikeCount), true
 	case "description":
-		return info.Description
+		return info.Description, true
 	}
-	return ""
+	return "", false
 }
 
-// sanitizeFilename removes path separators and illegal characters.
-func sanitizeFilename(name string, restrict bool) string {
+// sanitizePath cleans every path component while preserving the directory
+// structure produced by the template.
+func (y *YoutubeDL) sanitizePath(p string) string {
+	sep := string(os.PathSeparator)
+	parts := strings.Split(p, sep)
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[i] = y.sanitizeComponent(part)
+	}
+	return strings.Join(parts, sep)
+}
+
+func (y *YoutubeDL) sanitizeComponent(name string) string {
+	if y.opts.TrimFileName > 0 {
+		name = trimRunes(name, y.opts.TrimFileName)
+	}
+	if name == "" {
+		name = y.naPlaceholder()
+	}
+	return name
+}
+
+// sanitizeFilename replaces path separators and characters that are illegal on
+// common filesystems. restrict keeps only ASCII [A-Za-z0-9._-]; windows also
+// strips trailing dots and spaces.
+func sanitizeFilename(name string, restrict, windows bool) string {
 	name = strings.Map(func(r rune) rune {
 		switch r {
 		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', '\x00':
@@ -136,24 +230,36 @@ func sanitizeFilename(name string, restrict bool) string {
 		}
 		return r
 	}, name)
-	name = strings.TrimSpace(name)
 	if restrict {
 		name = restrictAscii(name)
 	}
-	if name == "" {
-		name = "NA"
+	if windows {
+		name = strings.TrimRight(name, ". ")
 	}
+	name = strings.TrimSpace(name)
 	return name
 }
 
 func restrictAscii(s string) string {
 	var b strings.Builder
 	for _, r := range s {
-		if r < 0x80 {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9',
+			r == '.', r == '-', r == '_':
 			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
 		}
 	}
 	return b.String()
+}
+
+func trimRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
 }
 
 // EnsureDir creates the parent directory of path.

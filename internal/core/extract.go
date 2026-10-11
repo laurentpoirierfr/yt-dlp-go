@@ -2,7 +2,7 @@ package core
 
 import (
 	"fmt"
-	"strconv"
+	mathrand "math/rand"
 	"strings"
 	"time"
 
@@ -24,6 +24,9 @@ func (y *YoutubeDL) ExtractInfo(url string, download bool) (*infodict.InfoDict, 
 		return nil, &extractor.UnsupportedURLError{URL: url}
 	}
 	ie.SetDownloader(y)
+	if ps, ok := ie.(interface{ SetPlaylistMaxEntries(int) }); ok {
+		ps.SetPlaylistMaxEntries(y.playlistMaxEntries())
+	}
 	result, err := ie.Extract(url)
 	if err != nil {
 		return nil, err
@@ -32,6 +35,39 @@ func (y *YoutubeDL) ExtractInfo(url string, download bool) (*infodict.InfoDict, 
 		return nil, fmt.Errorf("extractor returned no result for %s", url)
 	}
 	return y.processIeResult(result, download, map[string]string{"original_url": url}, 0)
+}
+
+// playlistMaxEntries computes how many playlist entries the extractor must
+// collect (0 = everything) so that pagination stops early for windows that
+// only cover the beginning of a playlist.
+func (y *YoutubeDL) playlistMaxEntries() int {
+	it := y.opts.PlaylistItems
+	if it != "" {
+		ranges, err := parsePlaylistItems(it)
+		if err != nil {
+			return 0
+		}
+		max := 0
+		for _, r := range ranges {
+			if r.endUnbounded || r.step < 0 || r.start < 0 || r.end < 0 || r.start == 0 {
+				return 0
+			}
+			if r.end > max {
+				max = r.end
+			}
+			if r.start > max {
+				max = r.start
+			}
+		}
+		return max
+	}
+	if y.opts.PlaylistReverse || y.opts.PlaylistRandom {
+		return 0
+	}
+	if y.opts.PlaylistEnd > 0 {
+		return y.opts.PlaylistEnd
+	}
+	return 0
 }
 
 func (y *YoutubeDL) processIeResult(result *infodict.InfoDict, download bool, extra map[string]string, depth int) (*infodict.InfoDict, error) {
@@ -80,6 +116,9 @@ func (y *YoutubeDL) extractInfoNoProcess(result *infodict.InfoDict, extra map[st
 		return nil, &extractor.UnsupportedURLError{URL: result.URL}
 	}
 	ie.SetDownloader(y)
+	if ps, ok := ie.(interface{ SetPlaylistMaxEntries(int) }); ok {
+		ps.SetPlaylistMaxEntries(y.playlistMaxEntries())
+	}
 	return ie.Extract(result.URL)
 }
 
@@ -119,6 +158,12 @@ func (y *YoutubeDL) processPlaylist(result *infodict.InfoDict, download bool, ex
 		if err != nil {
 			return nil, err
 		}
+		if y.opts.PlaylistReverse {
+			reverseItems(selected)
+		}
+		if y.opts.PlaylistRandom {
+			shuffleItems(selected)
+		}
 		count := len(selected)
 		y.ToScreen("[download] Downloading playlist: %s", orDefault(result.Title, result.ID))
 		y.ToScreen("[download] Playlist %s: Downloading %d videos", orDefault(result.Title, result.ID), count)
@@ -130,128 +175,38 @@ func (y *YoutubeDL) processPlaylist(result *infodict.InfoDict, download bool, ex
 			if result.ID != "" {
 				entry.PlaylistID = result.ID
 			}
+			wasArchived := y.opts.DownloadArchive != "" && y.inArchive(entry)
+			errorsBefore := y.Errors
 			if _, err := y.processIeResult(entry, download, extra, depth+1); err != nil {
 				y.ReportError("%v", err)
+			}
+			if wasArchived && y.opts.BreakOnExisting {
+				y.ToScreen("[download] Stopping because of --break-on-existing")
+				break
+			}
+			if y.opts.BreakPerURL && y.Errors > errorsBefore {
+				break
 			}
 		}
 	}
 	return result, nil
 }
 
+func reverseItems(items []playlistItem) {
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
+}
+
+func shuffleItems(items []playlistItem) {
+	mathrand.New(mathrand.NewSource(time.Now().UnixNano())).Shuffle(len(items), func(i, j int) {
+		items[i], items[j] = items[j], items[i]
+	})
+}
+
 type playlistItem struct {
 	idx   int
 	entry *infodict.InfoDict
-}
-
-type playlistRange struct {
-	lo, hi int // hi == 0 means unbounded (to the end of the playlist)
-}
-
-// selectPlaylistEntries narrows the entries to those selected by
-// --playlist-start, --playlist-end and --playlist-items.
-func selectPlaylistEntries(entries []*infodict.InfoDict, start, end int, items string) ([]playlistItem, error) {
-	var chosen map[int]bool
-	if items != "" {
-		ranges, err := parsePlaylistItems(items)
-		if err != nil {
-			return nil, err
-		}
-		n := len(entries)
-		chosen = make(map[int]bool, n)
-		for _, r := range ranges {
-			lo := r.lo
-			hi := r.hi
-			if hi == 0 || hi > n {
-				hi = n
-			}
-			if lo > hi {
-				continue
-			}
-			for k := lo; k <= hi; k++ {
-				if k > 0 {
-					chosen[k] = true
-				}
-			}
-		}
-	}
-	var out []playlistItem
-	for i, entry := range entries {
-		if entry == nil {
-			continue
-		}
-		idx := i + 1
-		if chosen != nil {
-			if !chosen[idx] {
-				continue
-			}
-		} else if idx < start || (end > 0 && idx > end) {
-			continue
-		}
-		out = append(out, playlistItem{idx: idx, entry: entry})
-	}
-	return out, nil
-}
-
-// parsePlaylistItems parses a --playlist-items specification such as
-// "1-3,5,9-" into a list of ranges (1-based).
-func parsePlaylistItems(spec string) ([]playlistRange, error) {
-	var out []playlistRange
-	for _, part := range strings.Split(spec, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		lo, hi, unbounded, err := parsePlaylistRange(part)
-		if err != nil {
-			return nil, fmt.Errorf("invalid format for --playlist-items: %q", part)
-		}
-		if !unbounded && lo > hi {
-			return nil, fmt.Errorf("playlist end is smaller than playlist start: %q", part)
-		}
-		out = append(out, playlistRange{lo: lo, hi: hi})
-	}
-	return out, nil
-}
-
-// parsePlaylistRange parses a single item token: "N", "N-M", "N-" or "-M".
-func parsePlaylistRange(tok string) (lo, hi int, unbounded bool, err error) {
-	tok = strings.TrimSpace(tok)
-	if tok == "" {
-		return 0, 0, false, fmt.Errorf("empty range")
-	}
-	dash := strings.IndexByte(tok, '-')
-	if dash < 0 {
-		n, err := strconv.Atoi(tok)
-		if err != nil {
-			return 0, 0, false, err
-		}
-		return n, n, false, nil
-	}
-	left := strings.TrimSpace(tok[:dash])
-	right := strings.TrimSpace(tok[dash+1:])
-	if left == "" && right == "" {
-		return 0, 0, false, fmt.Errorf("empty range")
-	}
-	if left != "" {
-		lo, err = strconv.Atoi(left)
-		if err != nil {
-			return 0, 0, false, err
-		}
-	}
-	if right != "" {
-		hi, err = strconv.Atoi(right)
-		if err != nil {
-			return 0, 0, false, err
-		}
-	}
-	if left == "" {
-		lo = 1
-	}
-	if right == "" {
-		hi = 0
-		unbounded = true
-	}
-	return lo, hi, unbounded, nil
 }
 
 func (y *YoutubeDL) processVideoResult(info *infodict.InfoDict, download bool) (*infodict.InfoDict, error) {
@@ -331,6 +286,10 @@ func (y *YoutubeDL) processInfo(info *infodict.InfoDict) error {
 	if y.opts.SkipDownload {
 		return nil
 	}
+	if y.opts.DownloadArchive != "" && !y.forceDownload(info) && y.inArchive(info) {
+		y.ToScreen("[download] %s has already been recorded in archive", archiveKey(info))
+		return nil
+	}
 	path, err := y.buildOutputPath(info)
 	if err != nil {
 		return err
@@ -344,7 +303,32 @@ func (y *YoutubeDL) processInfo(info *infodict.InfoDict) error {
 	if len(formats) == 0 {
 		formats = info.SelectedFormats
 	}
-	return y.downloader(info, formats)
+	if err := y.downloader(info, formats); err != nil {
+		return err
+	}
+	if y.opts.DownloadArchive != "" {
+		if err := y.addArchive(info); err != nil {
+			y.ReportWarning("Unable to add to archive: %v", err)
+		}
+	}
+	if y.subtitlesRequested() {
+		y.writeSubtitles(info)
+	}
+	if y.thumbnailsRequested() {
+		y.writeThumbnails(info)
+	}
+	if y.opts.WriteInfoJSON {
+		if err := y.writeInfoJSON(info, info.Filepath); err != nil {
+			y.ReportWarning("Unable to write info.json: %v", err)
+		}
+	}
+	return nil
+}
+
+// forceDownload reports whether --force-overwrites forces scripts to go ahead
+// even if the entry is already recorded in the archive.
+func (y *YoutubeDL) forceDownload(info *infodict.InfoDict) bool {
+	return y.opts.Overwrites != nil && *y.opts.Overwrites
 }
 
 func (y *YoutubeDL) defaultFormatSpec(info *infodict.InfoDict) string {

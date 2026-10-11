@@ -87,12 +87,13 @@ type Options struct {
 	GetComments      bool
 
 	// Subtitles
-	WriteSubtitles  bool
-	WriteAutoSubs   bool
-	AllSubtitles    bool
-	ListSubtitles   bool
-	SubtitlesFormat string
-	SubtitlesLangs  []string
+	WriteSubtitles   bool
+	WriteAutoSubs    bool
+	AllSubtitles     bool
+	ListSubtitles    bool
+	SubtitlesFormat  string
+	SubtitlesLangs   []string
+	ConvertSubtitles string
 
 	// Playlist / entry filtering
 	PlaylistStart     int
@@ -156,6 +157,9 @@ type Options struct {
 	Postprocessors         []PostprocessorSpec
 	Fixup                  string
 	KeepVideo              bool
+	ExtractAudio           bool
+	AudioFormat            string
+	AudioQuality           string
 
 	// User agent / referer (folded into HTTPHeaders by the CLI)
 	UserAgent string
@@ -196,7 +200,7 @@ func DefaultOptions() *Options {
 	o := &Options{
 		Quiet:                       false,
 		NoWarnings:                  false,
-		IgnoreErrors:                IgnoreOnlyDownload,
+		IgnoreErrors:                IgnoreNone,
 		ListFormatsTable:            true,
 		SubtitlesFormat:             "best",
 		PlaylistStart:               1,
@@ -213,6 +217,7 @@ func DefaultOptions() *Options {
 		Outtmpl:                     map[string]string{"default": "%(title)s [%(id)s].%(ext)s"},
 		ExtractorArgs:               map[string][]string{},
 		PostprocessorArgs:           map[string][]string{},
+		AudioQuality:                "5",
 		AllowedExtractors:           []string{"default"},
 	}
 	return o

@@ -472,6 +472,7 @@ func (b *Base) extractSubtitles(prs []map[string]any) (
 	subs, autoCaps map[string][]infodict.Subtitle) {
 	subs = map[string][]infodict.Subtitle{}
 	autoCaps = map[string][]infodict.Subtitle{}
+	seen := map[string]bool{}
 	for _, pr := range prs {
 		if pr["streamingData"] == nil {
 			continue
@@ -502,14 +503,11 @@ func (b *Base) extractSubtitles(prs []map[string]any) (
 			name := textOf(track["name"])
 			isASR := utils.Str(track["kind"]) == "asr"
 			target := subs
+			kind := "m"
 			if isASR {
-				target = autoCaps
+				target, kind = autoCaps, "a"
 			}
-			target[lang] = append(target[lang], infodict.Subtitle{
-				Ext:  "json3",
-				URL:  base + "&fmt=json3",
-				Name: name,
-			})
+			addCaption(target, seen, kind, lang, base, "", name)
 			if track["isTranslatable"] != nil {
 				var tlangs []string
 				for k := range translationLangs {
@@ -517,16 +515,55 @@ func (b *Base) extractSubtitles(prs []map[string]any) (
 				}
 				sort.Strings(tlangs)
 				for _, tl := range tlangs {
-					target[tl] = append(target[tl], infodict.Subtitle{
-						Ext:  "json3",
-						URL:  base + "&fmt=json3&tlang=" + tl,
-						Name: translationLangs[tl],
-					})
+					addCaption(target, seen, kind, tl, base, tl, translationLangs[tl])
 				}
 			}
 		}
 	}
 	return subs, autoCaps
+}
+
+// subtitleFormats lists the caption representations YouTube serves from a
+// track baseUrl, ordered from lowest to highest preference (like yt-dlp). An
+// empty fmt keeps the default srv1 response.
+var subtitleFormats = []struct{ fmt, ext string }{
+	{"json3", "json3"},
+	{"", "srv1"},
+	{"srv2", "srv2"},
+	{"srv3", "srv3"},
+	{"ttml", "ttml"},
+	{"vtt", "vtt"},
+}
+
+// addCaption appends the full set of caption representations for a track to
+// target[lang], skipping duplicates (the same track is present in every player
+// response). tlang selects a translated variant when non-empty.
+func addCaption(target map[string][]infodict.Subtitle, seen map[string]bool, kind, lang, base, tlang, name string) {
+	for _, f := range subtitleFormats {
+		sub := captionSubtitle(base, f.fmt, tlang, name)
+		key := kind + "\x00" + lang + "\x00" + sub.Ext
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		target[lang] = append(target[lang], sub)
+	}
+}
+
+// captionSubtitle builds one subtitle representation URL for a caption track.
+func captionSubtitle(base, fmtParam, tlang, name string) infodict.Subtitle {
+	u := base
+	if fmtParam != "" {
+		u += "&fmt=" + fmtParam
+	}
+	if tlang != "" {
+		u += "&tlang=" + tlang
+	}
+	ext := fmtParam
+	if ext == "" {
+		ext = "srv1"
+	}
+	return infodict.Subtitle{Ext: ext, URL: u, Name: name}
 }
 
 // textOf extracts plain text from a renderer (simpleText or runs).
