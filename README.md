@@ -23,6 +23,7 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 | Téléchargement HTTP + fusion ffmpeg | Fonctionnel |
 | Métadonnées JSON (`-j`, `-J`) | Fonctionnel |
 | Sidecar `.info.json` (`--write-info-json`) | Fonctionnel |
+| Vignettes (`--write-thumbnail`, `--write-all-thumbnails`, `--list-thumbnails`) | Fonctionnel |
 | Sous-titres (`--write-subs`, `--write-auto-subs`, `--all-subs`, `--sub-langs`, `--sub-format`, `--convert-subs`, `--list-subs`) | Fonctionnel |
 | Playlists | Complet (pagination, plages/items, reverse/random, archive) |
 | Post-traitements (audio, remux) | Fusion ffmpeg + extraction audio (`-x`) ; `--remux-video` refusé |
@@ -218,6 +219,13 @@ yt-dlp-go -J "URL"
 # Écrire un sidecar <video>.info.json à côté du fichier téléchargé
 yt-dlp-go --write-info-json "URL"
 
+# Télécharger la vignette (meilleure) ou toutes les vignettes
+yt-dlp-go --write-thumbnail "URL"
+yt-dlp-go --write-all-thumbnails "URL"
+
+# Lister les vignettes disponibles sans télécharger
+yt-dlp-go --list-thumbnails "URL"
+
 # Forcer un JSON lisible
 YTDL_JSON_PRETTY=1 yt-dlp-go -j "URL"
 ```
@@ -225,8 +233,14 @@ YTDL_JSON_PRETTY=1 yt-dlp-go -j "URL"
 `--write-info-json` écrit `<lecteur>.info.json` (le dictionnaire complet de la
 vidéo) à côté du fichier médiatique, après un téléchargement réussi.
 
-`--write-description` et `--write-thumbnail` ne sont pas encore implémentés :
-ils sont **refusés explicitement** (erreur) plutôt qu'ignorés silencieusement.
+`--write-thumbnail` écrit la meilleure vignette sous `<lecteur>.<ext>` ;
+`--write-all-thumbnails` écrit chaque vignette disponible sous
+`<lecteur>.<index>.<ext>` (les vignettes indisponibles sont ignorées avec un
+avertissement). `--list-thumbnails` affiche les vignettes disponibles sans rien
+télécharger.
+
+`--write-description` n'est pas encore implémenté : il est **refusé
+explicitement** (erreur) plutôt qu'ignoré silencieusement.
 
 ## Noms et dossiers de sortie
 
@@ -418,8 +432,9 @@ Formats     -f/--format, -S/--format-sort, --format-sort-force,
             --prefer-free-formats
 Simulation  -s/--simulate, --skip-download, --no-progress, --get-url,
             --get-title, --get-id, --get-filename
-JSON        -j/--dump-json, -J/--dump-single-json, -F/--list-formats,
-            --write-info-json
+JSON        -j/--dump-json, -J/--dump-single-json, -F/--list-formats
+Métadonnées --write-info-json
+Vignettes   --write-thumbnail, --write-all-thumbnails, --list-thumbnails
 Erreurs     -i/--ignore-errors
 Réseau      --proxy, --socket-timeout, --user-agent, --add-header,
             --no-check-certificate, --retries, --continue, --force-overwrites
@@ -448,7 +463,7 @@ des indices négatifs nécessitent la lecture complète.
 **Reconnues pour compatibilité mais pas encore implémentées :** les définir
 provoque une erreur explicite au lieu d'être ignorées silencieusement
 (ex. `--remux-video`, `--merge-output-format`, `--limit-rate`,
-`--write-description`, `--write-thumbnail`, `--break-on-reject`).
+`--write-description`, `--break-on-reject`).
 
 ## Architecture
 
@@ -457,7 +472,8 @@ cmd/yt-dlp/            Point d'entrée du binaire
 internal/cli/          Commandes cobra et correspondance des options
 internal/core/         Pipeline YoutubeDL (extract, process, format selector)
 internal/downloader/   Téléchargement HTTP (reprise, fusion des parts)
-internal/postprocessor/ Post-traitements (fusion ffmpeg)
+internal/postprocessor/ Post-traitements (fusion ffmpeg, extraction audio)
+internal/subtitles/    Sélection des langues et conversion VTT/SRT/json3
 internal/events/       Flux d'événements (progress, postprocess, logs)
 internal/render/       Sink texte reproduisant la sortie CLI classique
 internal/tui/          Interface plein écran Bubble Tea (logo, barres, logs)
