@@ -37,14 +37,14 @@ func TestProcessFormatStreamDrcPenalty(t *testing.T) {
 		"audioQuality":   "AUDIO_QUALITY_MEDIUM",
 		"averageBitrate": "107429",
 	}
-	normal := b.processFormatStream(cloneMap(base), "web", 0, false)
+	normal := b.processFormatStream(cloneMap(base), "web", 0, false, newFormatState(""))
 	if normal == nil || normal.Quality == nil || *normal.Quality != 3 {
 		t.Fatalf("normal quality = %v, want 3", normal)
 	}
 
 	drc := cloneMap(base)
 	drc["isDrc"] = true
-	got := b.processFormatStream(drc, "web", 0, false)
+	got := b.processFormatStream(drc, "web", 0, false, newFormatState(""))
 	if got == nil || got.Quality == nil || *got.Quality != 2.5 {
 		t.Fatalf("drc quality = %v, want 2.5", got)
 	}

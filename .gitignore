@@ -45,3 +45,6 @@ coverage.out
 # Uncomment the lines below if needed:
 # *.mp4
 # *.mkv
+
+# Ignore shell scripts
+opencode.sh
