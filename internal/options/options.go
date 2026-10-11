@@ -156,6 +156,9 @@ type Options struct {
 	Postprocessors         []PostprocessorSpec
 	Fixup                  string
 	KeepVideo              bool
+	ExtractAudio           bool
+	AudioFormat            string
+	AudioQuality           string
 
 	// User agent / referer (folded into HTTPHeaders by the CLI)
 	UserAgent string
@@ -213,6 +216,7 @@ func DefaultOptions() *Options {
 		Outtmpl:                     map[string]string{"default": "%(title)s [%(id)s].%(ext)s"},
 		ExtractorArgs:               map[string][]string{},
 		PostprocessorArgs:           map[string][]string{},
+		AudioQuality:                "5",
 		AllowedExtractors:           []string{"default"},
 	}
 	return o

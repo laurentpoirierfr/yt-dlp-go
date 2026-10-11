@@ -68,6 +68,12 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 			if len(info.RequestedDownloads) > 1 {
 				merge(info, opts, sink)
 			}
+			if opts.ExtractAudio {
+				if err := extractAudio(info, opts, sink); err != nil {
+					exit = 1
+					return err
+				}
+			}
 			return nil
 		})
 
@@ -150,6 +156,27 @@ func orExt(e string) string {
 		return "dat"
 	}
 	return e
+}
+
+// extractAudio runs the -x/--extract-audio post-processing stage and removes
+// the original file unless --keep-video was given.
+func extractAudio(info *infodict.InfoDict, opts *options.Options, sink events.Sink) error {
+	conv := postprocessor.NewFFmpegAudioExtractor(opts.FFmpegLocation, opts.AudioFormat, opts.AudioQuality, sink)
+	if !conv.Available() {
+		return fmt.Errorf("ffmpeg was not found but is required for -x/--extract-audio (use --ffmpeg-location)")
+	}
+	original := info.Filepath
+	dest, err := conv.Extract(original, info)
+	if err != nil {
+		return err
+	}
+	info.Filepath = dest
+	sink.Log(events.Log{Level: events.LevelInfo, Text: "Destination audio: " + dest})
+	if !opts.KeepVideo && dest != original {
+		_ = os.Remove(original)
+		sink.Log(events.Log{Level: events.LevelInfo, Text: "Deleting original file " + original})
+	}
+	return nil
 }
 
 func dumpJSON(info *infodict.InfoDict) error {

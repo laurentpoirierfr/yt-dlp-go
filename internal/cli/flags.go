@@ -158,5 +158,10 @@ func newRootCmd(o *options.Options) *cobra.Command {
 
 	f.StringVar(&o.FFmpegLocation, "ffmpeg-location", o.FFmpegLocation, "Location of the ffmpeg binary")
 
+	f.BoolVarP(&o.ExtractAudio, "extract-audio", "x", false, "Convert video files to audio-only files")
+	f.StringVar(&o.AudioFormat, "audio-format", o.AudioFormat, "Best audio format to be used when -x is used (best, mp3, aac, m4a, opus, flac, wav...)")
+	f.StringVar(&o.AudioQuality, "audio-quality", o.AudioQuality, "Specify ffmpeg audio quality, a value between 0 (best) and 9 (worst), or a bitrate")
+	f.BoolVarP(&o.KeepVideo, "keep-video", "k", false, "Keep the video file on disk after post-processing")
+
 	return cmd
 }
