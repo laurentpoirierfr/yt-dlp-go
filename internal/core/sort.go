@@ -146,7 +146,7 @@ func (s *formatSorter) getType(field string) string {
 		return "multiple"
 	case "ext":
 		return "combined"
-	case "vext", "aext", "vcodec", "acodec", "hdr", "proto", "quality":
+	case "vext", "aext", "vcodec", "acodec", "hdr", "proto":
 		return "ordered"
 	}
 	switch field {
@@ -342,7 +342,7 @@ func formatFieldValue(f *infodict.Format, field string) any {
 	case "lang":
 		return intPtr(f.LanguagePreference)
 	case "quality":
-		return intPtr(f.Quality)
+		return floatPtr(f.Quality)
 	case "res":
 		return minPositive(f.Height, f.Width)
 	case "fps":
@@ -400,6 +400,13 @@ func intPtr(p *int) float64 {
 		return -1
 	}
 	return float64(*p)
+}
+
+func floatPtr(p *float64) float64 {
+	if p == nil {
+		return -1
+	}
+	return *p
 }
 
 func hasCodec(c string) bool { return c != "" && c != "none" }

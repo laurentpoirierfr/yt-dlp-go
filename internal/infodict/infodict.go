@@ -167,10 +167,10 @@ type Format struct {
 	Container    string `json:"container,omitempty"`
 	Protocol     string `json:"protocol,omitempty"`
 
-	Preference         *int `json:"preference,omitempty"`
-	Quality            *int `json:"quality,omitempty"`
-	SourcePreference   *int `json:"source_preference,omitempty"`
-	LanguagePreference *int `json:"language_preference,omitempty"`
+	Preference         *int     `json:"preference,omitempty"`
+	Quality            *float64 `json:"quality,omitempty"`
+	SourcePreference   *int     `json:"source_preference,omitempty"`
+	LanguagePreference *int     `json:"language_preference,omitempty"`
 
 	HTTPHeaders     map[string]string `json:"http_headers,omitempty"`
 	Fragments       []Fragment        `json:"fragments,omitempty"`

@@ -417,6 +417,12 @@ func (b *Base) processFormatStream(fs map[string]any, clientName string, duratio
 		DownloaderOptions:  map[string]any{"http_chunk_size": 10 << 20},
 	}
 	out.Quality = qualityIndex(quality)
+	// yt-dlp deprioritizes DRC (dynamic range compressed) formats via a
+	// half-point quality penalty (see youtube/_video.py).
+	if fs["isDrc"] != nil && out.Quality != nil {
+		v := *out.Quality - 0.5
+		out.Quality = &v
+	}
 
 	if m := reMimeType.FindStringSubmatch(utils.Str(fs["mimeType"])); m != nil {
 		out.Ext = utils.Mimetype2ext(strings.Split(m[1], ";")[0])
@@ -446,19 +452,21 @@ func f64d(p *float64) float64 {
 	return *p
 }
 
-// qualityIndex maps yt-dlp's quality names to a sortable integer.
+// qualityOrder mirrors yt-dlp's YouTube `qualities([...])` list.
 var qualityOrder = []string{
-	"tiny", "small", "medium", "large", "hd720", "hd1080", "hd1440", "hd2160",
-	"highres", "premium",
+	"tiny",
+	"audio_quality_ultralow", "audio_quality_low", "audio_quality_medium", "audio_quality_high",
+	"small", "medium", "large", "hd720", "hd1080", "hd1440", "hd2160", "hd2880", "highres",
 }
 
-func qualityIndex(q string) *int {
+func qualityIndex(q string) *float64 {
 	if q == "" {
 		return nil
 	}
 	for i, name := range qualityOrder {
 		if name == q {
-			return ip(int64(i))
+			v := float64(i)
+			return &v
 		}
 	}
 	return nil
