@@ -23,7 +23,7 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 | Téléchargement HTTP + fusion ffmpeg | Fonctionnel |
 | Métadonnées JSON (`-j`, `-J`) | Fonctionnel |
 | Sidecar `.info.json` (`--write-info-json`) | Fonctionnel |
-| Sous-titres | Extraction oui, écriture sur disque en cours |
+| Sous-titres (`--write-subs`, `--write-auto-subs`, `--all-subs`, `--sub-langs`, `--sub-format`, `--convert-subs`, `--list-subs`) | Fonctionnel |
 | Playlists | Complet (pagination, plages/items, reverse/random, archive) |
 | Post-traitements (audio, remux) | Fusion ffmpeg + extraction audio (`-x`) ; `--remux-video` refusé |
 | Noms de fichiers (gabarits, `--restrict/windows/trim-filenames`) | Fonctionnel |
@@ -305,25 +305,34 @@ yt-dlp-go -o "%(playlist)s/%(playlist_index)02d - %(title)s.%(ext)s" "URL"
 
 ## Sous-titres
 
-L'extraction des sous-titres (manuels et automatiques) est disponible dans les
-métadonnées (`-j`/`-J`). L'écriture sur disque des fichiers `.srt`/`.vtt` est en
-cours.
+Les sous-titres (manuels et automatiques) sont extraits dans les métadonnées
+(`-j`/`-J`) et peuvent être écrits sur disque aux formats `json3`, `srv1`,
+`srv2`, `srv3`, `ttml` et `vtt`, avec conversion optionnelle vers `srt`/`vtt`.
 
 ```console
 # Toutes les langues disponibles
 yt-dlp-go --all-subs "URL"
 
-# Langues précises
+# Langues précises (accepter aussi une regex, préfixe "-" pour exclure)
 yt-dlp-go --sub-langs "fr,en" --write-subs "URL"
 
 # Sous-titres automatiques
 yt-dlp-go --write-auto-subs --sub-langs "en" "URL"
 
-# Format préféré
-yt-dlp-go --sub-format "srt/vtt/best" "URL"
+# Formater la préférence et convertir
+yt-dlp-go --write-subs --sub-langs "en" --sub-format "vtt/best" --convert-subs srt "URL"
+
+# Lister les langues disponibles sans télécharger
+yt-dlp-go --list-subs "URL"
 ```
 
-En attendant l'écriture directe, inspectez les pistes disponibles via le JSON :
+Les fichiers sont écrits à côté du média sous la forme `<base>.<lang>.<ext>`
+(par exemple `Ma vidéo [id].fr.srt`). `--sub-format` exprime une préférence
+séparée par `/` ; les formats non convertibles sont ignorés lors de
+`--convert-subs`. `--sub-langs all` (défaut) sélectionne toutes les langues,
+`-live_chat` permet d'en exclure.
+
+Inspectez aussi les pistes disponibles via le JSON :
 
 ```console
 yt-dlp-go -j "URL" | grep -o '"subtitles".*'
@@ -420,6 +429,8 @@ Playlist    --no-playlist, --yes-playlist, --playlist-start, --playlist-end,
 Archives    --download-archive, --break-on-existing, --break-per-input
 Audio       -x/--extract-audio, --audio-format, --audio-quality,
             -k/--keep-video, --ffmpeg-location
+Sous-titres --write-subs, --write-auto-subs, --all-subs, --sub-langs,
+            --sub-format, --convert-subs/--convert-subtitles, --list-subs
 Divers      -q/--quiet, -v/--verbose, --tui, --no-tui
 ```
 
@@ -437,7 +448,7 @@ des indices négatifs nécessitent la lecture complète.
 **Reconnues pour compatibilité mais pas encore implémentées :** les définir
 provoque une erreur explicite au lieu d'être ignorées silencieusement
 (ex. `--remux-video`, `--merge-output-format`, `--limit-rate`,
-`--write-description`, `--write-thumbnail`, `--write-subs`, `--break-on-reject`).
+`--write-description`, `--write-thumbnail`, `--break-on-reject`).
 
 ## Architecture
 
