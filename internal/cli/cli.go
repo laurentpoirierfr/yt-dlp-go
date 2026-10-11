@@ -59,6 +59,19 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 		opts.ForceURL || opts.ForceTitle || opts.ForceID || opts.ForceFilename ||
 		opts.SkipDownload
 
+	// wantProcess decides whether the entry goes through processInfo: it
+	// downloads the media and/or writes the requested sidecars. Pure
+	// simulation (-s), listing/dump modes never process; --skip-download still
+	// writes sidecars (like yt-dlp) but no media.
+	listing := opts.ListFormats || opts.ListSubtitles || opts.ListThumbnails ||
+		opts.ForceJSON || opts.DumpSingleJSON ||
+		opts.ForceURL || opts.ForceTitle || opts.ForceID || opts.ForceFilename
+	writeSidecars := opts.WriteInfoJSON || opts.WriteDescription ||
+		opts.WriteSubtitles || opts.WriteAutoSubs || opts.AllSubtitles ||
+		opts.WriteThumbnail != options.ThumbnailNone
+	pureSimulate := opts.Simulate != nil && *opts.Simulate
+	wantProcess := !pureSimulate && !listing && (!opts.SkipDownload || writeSidecars)
+
 	process := func() int {
 		sink := ydl.Sink()
 		httpDL := downloader.NewHTTP(ydl.Client(), opts, sink)
@@ -82,7 +95,7 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 
 		abortOnError := opts.IgnoreErrors == options.IgnoreNone
 		for _, url := range urls {
-			info, err := ydl.ExtractInfo(url, !simulate)
+			info, err := ydl.ExtractInfo(url, wantProcess)
 			if err != nil {
 				sink.Log(events.Log{Level: events.LevelError, Text: err.Error()})
 				exit = 1
@@ -120,8 +133,16 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 			} else if opts.ForceID {
 				fmt.Println(info.ID)
 			}
-			if opts.ForceFilename && info.Filepath != "" {
-				fmt.Println(info.Filepath)
+			if opts.ForceFilename {
+				path := info.Filepath
+				if path == "" {
+					if p, err := ydl.OutputPath(info); err == nil {
+						path = p
+					}
+				}
+				if path != "" {
+					fmt.Println(path)
+				}
 			}
 		}
 		return exit
