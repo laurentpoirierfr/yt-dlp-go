@@ -87,12 +87,13 @@ type Options struct {
 	GetComments      bool
 
 	// Subtitles
-	WriteSubtitles  bool
-	WriteAutoSubs   bool
-	AllSubtitles    bool
-	ListSubtitles   bool
-	SubtitlesFormat string
-	SubtitlesLangs  []string
+	WriteSubtitles   bool
+	WriteAutoSubs    bool
+	AllSubtitles     bool
+	ListSubtitles    bool
+	SubtitlesFormat  string
+	SubtitlesLangs   []string
+	ConvertSubtitles string
 
 	// Playlist / entry filtering
 	PlaylistStart     int

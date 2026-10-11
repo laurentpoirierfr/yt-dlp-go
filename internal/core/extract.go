@@ -311,6 +311,9 @@ func (y *YoutubeDL) processInfo(info *infodict.InfoDict) error {
 			y.ReportWarning("Unable to add to archive: %v", err)
 		}
 	}
+	if y.subtitlesRequested() {
+		y.writeSubtitles(info)
+	}
 	if y.opts.WriteInfoJSON {
 		if err := y.writeInfoJSON(info, info.Filepath); err != nil {
 			y.ReportWarning("Unable to write info.json: %v", err)

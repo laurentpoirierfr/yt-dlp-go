@@ -8,10 +8,11 @@ import (
 
 func TestValidateUnsupportedRejects(t *testing.T) {
 	cases := [][]string{
-		{"--write-subs", "URL"},
+		{"--write-description", "URL"},
 		{"--write-thumbnail", "URL"},
 		{"--limit-rate", "1000", "URL"},
 		{"--remux-video", "mkv", "URL"},
+		{"--convert-subs", "ass", "URL"},
 	}
 	for _, args := range cases {
 		cmd := newRootCmd(options.DefaultOptions())
@@ -28,6 +29,9 @@ func TestValidateUnsupportedAcceptsImplemented(t *testing.T) {
 		{"--playlist-reverse", "--playlist-random", "URL"},
 		{"--break-on-existing", "--break-per-input", "--download-archive", "archive.txt", "URL"},
 		{"--write-info-json", "--force-overwrites", "URL"},
+		{"--write-subs", "--write-auto-subs", "--all-subs", "URL"},
+		{"--sub-langs", "en,fr", "--sub-format", "vtt", "--list-subs", "URL"},
+		{"--convert-subs", "srt", "URL"},
 	}
 	for _, args := range cases {
 		cmd := newRootCmd(options.DefaultOptions())

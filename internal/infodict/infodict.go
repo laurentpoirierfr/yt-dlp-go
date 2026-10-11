@@ -74,18 +74,19 @@ type InfoDict struct {
 	MediaType       string   `json:"media_type,omitempty"`
 
 	// Playback
-	StartTime         *float64              `json:"start_time,omitempty"`
-	EndTime           *float64              `json:"end_time,omitempty"`
-	Thumbnail         string                `json:"thumbnail,omitempty"`
-	Thumbnails        []Thumbnail           `json:"thumbnails,omitempty"`
-	Chapters          []Chapter             `json:"chapters,omitempty"`
-	Heatmap           []HeatmapSegment      `json:"heatmap,omitempty"`
-	Subtitles         map[string][]Subtitle `json:"subtitles,omitempty"`
-	AutomaticCaptions map[string][]Subtitle `json:"automatic_captions,omitempty"`
-	Formats           []Format              `json:"formats,omitempty"`
-	RequestedFormats  []Format              `json:"requested_formats,omitempty"`
-	SelectedFormats   []Format              `json:"-"`
-	FilesToMove       map[string]string     `json:"-"`
+	StartTime          *float64              `json:"start_time,omitempty"`
+	EndTime            *float64              `json:"end_time,omitempty"`
+	Thumbnail          string                `json:"thumbnail,omitempty"`
+	Thumbnails         []Thumbnail           `json:"thumbnails,omitempty"`
+	Chapters           []Chapter             `json:"chapters,omitempty"`
+	Heatmap            []HeatmapSegment      `json:"heatmap,omitempty"`
+	Subtitles          map[string][]Subtitle `json:"subtitles,omitempty"`
+	AutomaticCaptions  map[string][]Subtitle `json:"automatic_captions,omitempty"`
+	RequestedSubtitles map[string]Subtitle   `json:"requested_subtitles,omitempty"`
+	Formats            []Format              `json:"formats,omitempty"`
+	RequestedFormats   []Format              `json:"requested_formats,omitempty"`
+	SelectedFormats    []Format              `json:"-"`
+	FilesToMove        map[string]string     `json:"-"`
 
 	// Series / episode
 	Series        string `json:"series,omitempty"`
