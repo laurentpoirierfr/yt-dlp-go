@@ -317,6 +317,11 @@ func (y *YoutubeDL) processInfo(info *infodict.InfoDict) error {
 	if y.thumbnailsRequested() {
 		y.writeThumbnails(info)
 	}
+	if y.opts.WriteDescription {
+		if err := y.writeDescription(info); err != nil {
+			y.ReportWarning("Unable to write description: %v", err)
+		}
+	}
 	if y.opts.WriteInfoJSON {
 		if err := y.writeInfoJSON(info, info.Filepath); err != nil {
 			y.ReportWarning("Unable to write info.json: %v", err)

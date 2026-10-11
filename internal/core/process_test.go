@@ -228,3 +228,25 @@ func TestWriteInfoJSONSidecar(t *testing.T) {
 		t.Errorf("Filepath = %q, want %q", info.Filepath, want)
 	}
 }
+
+func TestWriteDescriptionSidecar(t *testing.T) {
+	dir := t.TempDir()
+	o := options.DefaultOptions()
+	o.WriteDescription = true
+	o.Paths = map[string]string{"home": dir}
+	ydl := New(o)
+	ydl.SetDownloader(func(info *infodict.InfoDict, formats []infodict.Format) error { return nil })
+	info := mkVideo("vid456")
+	info.Title = "My Video"
+	info.Description = "line one\nline two"
+	if err := ydl.processInfo(info); err != nil {
+		t.Fatalf("processInfo: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "My Video [vid456].description"))
+	if err != nil {
+		t.Fatalf("description sidecar not written: %v", err)
+	}
+	if string(data) != "line one\nline two" {
+		t.Errorf("description = %q", string(data))
+	}
+}

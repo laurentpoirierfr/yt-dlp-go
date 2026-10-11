@@ -35,9 +35,6 @@ var unsupportedFlags = map[string]string{
 
 	// Playlist ordering
 	"break-on-reject": "entry filtering is not implemented",
-
-	// Metadata sidecars
-	"write-description": "description sidecar writing is not implemented yet",
 }
 
 // validateConvertSubtitles normalizes and validates the --convert-subs value.
