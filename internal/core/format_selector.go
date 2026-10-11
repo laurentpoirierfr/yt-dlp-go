@@ -620,9 +620,11 @@ func dedupe(in []string) []string {
 	return out
 }
 
+// getCompatibleExt picks the container extension for a merged format,
+// mirroring yt-dlp's utils.get_compatible_ext (with no merge_output_format
+// preference, so 'mkv' is allowed).
 func getCompatibleExt(formats []infodict.Format) string {
-	var vexts, aexts []string
-	var vcodecs, acodecs []string
+	var vexts, aexts, vcodecs, acodecs []string
 	for _, f := range formats {
 		if hasVideo(f) {
 			vexts = append(vexts, f.Ext)
@@ -633,21 +635,84 @@ func getCompatibleExt(formats []infodict.Format) string {
 			acodecs = append(acodecs, f.ACodec)
 		}
 	}
-	allWebm := len(vexts) > 0
-	for _, e := range vexts {
-		if e != "webm" {
-			allWebm = false
+
+	if maxInt(len(acodecs), len(vcodecs)) > 1 {
+		return "mkv"
+	}
+
+	compatibleCodecs := []struct {
+		ext    string
+		codecs []string
+	}{
+		{"mp4", []string{"av1", "hevc", "avc1", "mp4a", "ac-4", "h264", "aacl", "ec-3"}},
+		{"webm", []string{"av1", "vp9", "vp8", "opus", "vrbs", "vp9x", "vp8x"}},
+	}
+	vcodec := sanitizeCodec(vcodecs)
+	acodec := sanitizeCodec(acodecs)
+	for _, c := range compatibleCodecs {
+		if containsStr(c.codecs, vcodec) && containsStr(c.codecs, acodec) {
+			return c.ext
 		}
 	}
-	for _, e := range aexts {
-		if e != "webm" && e != "weba" && e != "opus" && e != "ogg" {
-			allWebm = false
+
+	compatibleExts := [][]string{
+		{"mp3", "mp4", "m4a", "m4p", "m4b", "m4r", "m4v", "ismv", "isma", "mov"},
+		{"webm", "weba"},
+	}
+	for _, ext := range vexts {
+		current := map[string]bool{ext: true}
+		for _, e := range vexts {
+			current[e] = true
+		}
+		for _, e := range aexts {
+			current[e] = true
+		}
+		if len(current) == 1 {
+			return ext
+		}
+		for _, set := range compatibleExts {
+			if isSuperset(set, current) {
+				return ext
+			}
 		}
 	}
-	if allWebm {
-		return "webm"
+	return "mkv"
+}
+
+// sanitizeCodec reproduces yt-dlp's codec normalization: take the first codec,
+// strip everything after the first dot, drop '0' runes and lowercase.
+func sanitizeCodec(codecs []string) string {
+	if len(codecs) == 0 {
+		return ""
 	}
-	_ = vcodecs
-	_ = acodecs
-	return "mp4"
+	first := codecs[0]
+	if i := strings.IndexByte(first, '.'); i >= 0 {
+		first = first[:i]
+	}
+	return strings.ToLower(strings.ReplaceAll(first, "0", ""))
+}
+
+func containsStr(list []string, v string) bool {
+	for _, s := range list {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
+
+func isSuperset(set []string, subset map[string]bool) bool {
+	for k := range subset {
+		if !containsStr(set, k) {
+			return false
+		}
+	}
+	return true
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
