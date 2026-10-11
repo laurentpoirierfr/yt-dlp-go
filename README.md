@@ -25,7 +25,7 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 | Sidecar `.info.json` (`--write-info-json`) | Fonctionnel |
 | Sous-titres | Extraction oui, écriture sur disque en cours |
 | Playlists | Complet (pagination, plages/items, reverse/random, archive) |
-| Post-traitements (audio, remux) | Partiel (fusion ffmpeg seule ; `--remux-video` refusé) |
+| Post-traitements (audio, remux) | Fusion ffmpeg + extraction audio (`-x`) ; `--remux-video` refusé |
 | Noms de fichiers (gabarits, `--restrict/windows/trim-filenames`) | Fonctionnel |
 | Options non implémentées | Refusées explicitement (plus de no-op silencieux) |
 | Interface terminal (IHM Bubble Tea) | Fonctionnelle |
@@ -362,8 +362,8 @@ yt-dlp-go -q "URL"
 
 ## Post-traitement
 
-La fusion vidéo + audio via ffmpeg est fonctionnelle. Le remux
-(`--remux-video`) et l'extraction audio sont en cours.
+La fusion vidéo + audio et l'extraction audio via ffmpeg sont fonctionnelles.
+Le remux (`--remux-video`) est encore en cours.
 
 ```console
 # Conteneur de fusion
@@ -371,7 +371,24 @@ yt-dlp-go --merge-output-format mp4 -f "bestvideo+bestaudio" "URL"
 
 # Emplacement de ffmpeg
 yt-dlp-go --ffmpeg-location /usr/bin/ffmpeg "URL"
+
+# Audio seul : conversion vers un format donné (le fichier d'origine est
+# supprimé après conversion)
+yt-dlp-go -x --audio-format mp3 "URL"
+
+# Qualité (0 = meilleur, 9 = pire) ou débit explicite
+yt-dlp-go -x --audio-format mp3 --audio-quality 2 "URL"
+yt-dlp-go -x --audio-format flac --audio-quality 192K "URL"
+
+# Sans --audio-format, seule la vidéo est retirée (conteneur conservé)
+yt-dlp-go -x "URL"
+
+# Conserver le fichier vidéo d'origine (-k/--keep-video)
+yt-dlp-go -x --audio-format opus -k "URL"
 ```
+
+Formats audio supportés : `best`, `aac`, `aiff`, `alac`, `flac`, `m4a`, `mp3`,
+`ogg`, `opus`, `vorbis`, `wav`, `wma`.
 
 ## Inspection de la configuration
 
@@ -401,7 +418,9 @@ Playlist    --no-playlist, --yes-playlist, --playlist-start, --playlist-end,
             -I/--playlist-items, --playlist-reverse, --playlist-random,
             --flat-playlist
 Archives    --download-archive, --break-on-existing, --break-per-input
-Divers      -q/--quiet, -v/--verbose, --ffmpeg-location, --tui, --no-tui
+Audio       -x/--extract-audio, --audio-format, --audio-quality,
+            -k/--keep-video, --ffmpeg-location
+Divers      -q/--quiet, -v/--verbose, --tui, --no-tui
 ```
 
 Par défaut, la première erreur arrête le programme ; `-i/--ignore-errors`
