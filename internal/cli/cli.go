@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -52,6 +54,7 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 	ydl.RegisterExtractors(ies)
 
 	simulate := (opts.Simulate != nil && *opts.Simulate) || opts.ListFormats ||
+		opts.ListSubtitles ||
 		opts.ForceJSON || opts.DumpSingleJSON ||
 		opts.ForceURL || opts.ForceTitle || opts.ForceID || opts.ForceFilename ||
 		opts.SkipDownload
@@ -93,6 +96,10 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 			}
 			if opts.ListFormats {
 				listFormats(info)
+				continue
+			}
+			if opts.ListSubtitles {
+				listSubtitles(info)
 				continue
 			}
 			if opts.ForceJSON || opts.DumpSingleJSON {
@@ -198,6 +205,39 @@ func listFormats(info *infodict.InfoDict) {
 		}
 		fmt.Fprintf(os.Stdout, "%-12s %-10s %-14s %-10.0f %-10s %s\n",
 			f.FormatID, f.Ext, res, f.FPS, orNone(f.VCodec), orNone(f.ACodec))
+	}
+}
+
+func listSubtitles(info *infodict.InfoDict) {
+	if len(info.Subtitles) > 0 {
+		fmt.Fprintf(os.Stdout, "Available subtitles for %s:\n", info.ID)
+		printSubtitleLangs(info.Subtitles)
+	}
+	if len(info.AutomaticCaptions) > 0 {
+		if len(info.Subtitles) > 0 {
+			fmt.Fprintln(os.Stdout)
+		}
+		fmt.Fprintf(os.Stdout, "Available automatic captions for %s:\n", info.ID)
+		printSubtitleLangs(info.AutomaticCaptions)
+	}
+	if len(info.Subtitles) == 0 && len(info.AutomaticCaptions) == 0 {
+		fmt.Fprintf(os.Stdout, "There are no subtitles for the requested languages for %s\n", info.ID)
+	}
+}
+
+func printSubtitleLangs(subs map[string][]infodict.Subtitle) {
+	langs := make([]string, 0, len(subs))
+	for lang := range subs {
+		langs = append(langs, lang)
+	}
+	sort.Strings(langs)
+	fmt.Fprintf(os.Stdout, "%-12s%s\n", "Language", "formats")
+	for _, lang := range langs {
+		var exts []string
+		for _, s := range subs[lang] {
+			exts = append(exts, s.Ext)
+		}
+		fmt.Fprintf(os.Stdout, "%-12s%s\n", lang, strings.Join(exts, ", "))
 	}
 }
 

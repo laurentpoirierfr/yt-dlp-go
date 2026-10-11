@@ -67,7 +67,10 @@ func newRootCmd(o *options.Options) *cobra.Command {
 					o.HTTPHeaders[strings.TrimSpace(k)] = strings.TrimSpace(v)
 				}
 			}
-			return validateUnsupported(cmd)
+			if err := validateUnsupported(cmd); err != nil {
+				return err
+			}
+			return validateConvertSubtitles(o)
 		},
 	}
 
@@ -153,8 +156,11 @@ func newRootCmd(o *options.Options) *cobra.Command {
 	f.BoolVar(&o.WriteSubtitles, "write-subs", false, "Write subtitle file")
 	f.BoolVar(&o.WriteAutoSubs, "write-auto-subs", false, "Write automatically generated subtitle file")
 	f.BoolVar(&o.AllSubtitles, "all-subs", false, "Download all the available subtitles")
-	f.StringSliceVar(&o.SubtitlesLangs, "sub-langs", nil, "Languages of the subtitles to download")
-	f.StringVar(&o.SubtitlesFormat, "sub-format", o.SubtitlesFormat, "Subtitle format")
+	f.BoolVar(&o.ListSubtitles, "list-subs", false, "List available subtitles of each video")
+	f.StringSliceVar(&o.SubtitlesLangs, "sub-langs", nil, "Languages of the subtitles to download (can be regex) or \"all\"")
+	f.StringVar(&o.SubtitlesFormat, "sub-format", o.SubtitlesFormat, "Subtitle format preference separated by \"/\"")
+	f.StringVar(&o.ConvertSubtitles, "convert-subs", o.ConvertSubtitles, "Convert the subtitles to another format (srt, vtt)")
+	f.StringVar(&o.ConvertSubtitles, "convert-subtitles", o.ConvertSubtitles, "Alias of --convert-subs")
 
 	f.StringVar(&o.FFmpegLocation, "ffmpeg-location", o.FFmpegLocation, "Location of the ffmpeg binary")
 

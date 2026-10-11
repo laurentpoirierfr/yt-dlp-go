@@ -6,6 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/options"
 )
 
 // unsupportedFlags lists flags that are accepted for yt-dlp compatibility but
@@ -38,13 +40,21 @@ var unsupportedFlags = map[string]string{
 	"write-thumbnail":      "thumbnail writing is not implemented yet",
 	"write-all-thumbnails": "thumbnail writing is not implemented yet",
 	"write-description":    "description sidecar writing is not implemented yet",
+}
 
-	// Subtitles
-	"write-subs":      "subtitle writing is not implemented yet",
-	"write-auto-subs": "subtitle writing is not implemented yet",
-	"all-subs":        "subtitle writing is not implemented yet",
-	"sub-langs":       "subtitle writing is not implemented yet",
-	"sub-format":      "subtitle writing is not implemented yet",
+// validateConvertSubtitles normalizes and validates the --convert-subs value.
+func validateConvertSubtitles(o *options.Options) error {
+	v := strings.ToLower(strings.TrimSpace(o.ConvertSubtitles))
+	switch v {
+	case "", "none":
+		o.ConvertSubtitles = ""
+		return nil
+	case "srt", "vtt":
+		o.ConvertSubtitles = v
+		return nil
+	default:
+		return fmt.Errorf("--convert-subs: unsupported format %q (supported: srt, vtt)", o.ConvertSubtitles)
+	}
 }
 
 // validateUnsupported returns an error if the user explicitly set one or more
