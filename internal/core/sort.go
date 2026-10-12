@@ -562,8 +562,15 @@ func fillSortingFields(f *infodict.Format) {
 		f.Ext = extFromURL(f.URL)
 	}
 	if f.VCodec == "none" {
-		if f.ACodec == "none" {
+		if f.ACodec != "none" {
+			f.AudioExt = f.Ext
+		} else {
+			f.AudioExt = "none"
 		}
+		f.VideoExt = "none"
+	} else {
+		f.VideoExt = f.Ext
+		f.AudioExt = "none"
 	}
 	if f.VCodec == "none" {
 		f.VBR = 0
