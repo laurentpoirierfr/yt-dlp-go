@@ -148,6 +148,8 @@ type Format struct {
 
 	Width         int      `json:"width,omitempty"`
 	Height        int      `json:"height,omitempty"`
+	Rows          int      `json:"rows,omitempty"`
+	Columns       int      `json:"columns,omitempty"`
 	Resolution    string   `json:"resolution,omitempty"`
 	AspectRatio   *float64 `json:"aspect_ratio,omitempty"`
 	FPS           float64  `json:"fps,omitempty"`
