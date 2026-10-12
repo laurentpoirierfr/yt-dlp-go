@@ -45,6 +45,14 @@ type TransportError struct {
 func (e *TransportError) Error() string { return e.Err.Error() }
 func (e *TransportError) Unwrap() error { return e.Err }
 
+// IsNetworkError reports whether err is one of the network-layer errors
+// returned by the client (equivalent of yt-dlp's network_exceptions tuple).
+func IsNetworkError(err error) bool {
+	var he *HTTPError
+	var te *TransportError
+	return errors.As(err, &he) || errors.As(err, &te)
+}
+
 // Client is the request director equivalent of yt-dlp.
 type Client struct {
 	http        *http.Client
@@ -225,7 +233,11 @@ func (c *Client) Send(req *Request, expectStatus ...int) (*Response, error) {
 	}
 	if resp.StatusCode >= 400 && !statusExpected(resp.StatusCode, expectStatus) {
 		resp.Body.Close()
-		return nil, &HTTPError{StatusCode: resp.StatusCode, Status: resp.Status, URL: req.URL}
+		status := resp.Status
+		if i := strings.IndexByte(status, ' '); i >= 0 {
+			status = status[i+1:]
+		}
+		return nil, &HTTPError{StatusCode: resp.StatusCode, Status: status, URL: req.URL}
 	}
 	return &Response{
 		URL:        resp.Request.URL.String(),

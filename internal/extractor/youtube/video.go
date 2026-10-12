@@ -279,7 +279,7 @@ func (ie *YoutubeIE) extractPlayerResponses(
 	_ = playerURL
 	if len(prs) == 0 {
 		return nil, playerURL, ie.NewExtractorError(
-			"All player responses are invalid. Your IP is likely being blocked by Youtube", false, nil)
+			"All player responses are invalid. Your IP is likely being blocked by Youtube", true, nil)
 	}
 	return prs, playerURL, nil
 }

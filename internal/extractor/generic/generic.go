@@ -40,7 +40,8 @@ func (ie *GenericIE) Suitable(u string) bool {
 
 // RealExtract scrapes a page for a playable media URL.
 func (ie *GenericIE) RealExtract(u string) (*infodict.InfoDict, error) {
-	webpage, err := ie.DownloadWebpage(extractor.NewRequest(u, nil, nil), "", "Downloading webpage", "", true, "")
+	id := ie.GenericID(u)
+	webpage, err := ie.DownloadWebpage(extractor.NewRequest(u, nil, nil), id, "Downloading webpage", "", true, "")
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +49,6 @@ func (ie *GenericIE) RealExtract(u string) (*infodict.InfoDict, error) {
 		return nil, ie.NewExtractorError("Unable to download webpage", true, nil)
 	}
 
-	id := ie.GenericID(u)
 	title := ie.GenericTitle(u, webpage)
 
 	var formats []infodict.Format
