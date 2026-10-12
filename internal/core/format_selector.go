@@ -789,9 +789,9 @@ func filterAttr(f infodict.Format, key string) (any, bool) {
 	case "tbr":
 		return floatAttr(f.TBR)
 	case "vbr":
-		return floatAttr(f.VBR)
+		return floatPtrAttr(f.VBR)
 	case "abr":
-		return floatAttr(f.ABR)
+		return floatPtrAttr(f.ABR)
 	case "asr":
 		return intAttr(int64(f.ASR))
 	case "audio_channels":
@@ -919,7 +919,7 @@ func mergeFormats(f1, f2 infodict.Format) infodict.Format {
 	out := infodict.Format{
 		RequestedFormats: formats,
 		FormatID:         strings.Join(ids, "+"),
-		Format:           strings.Join(ids, "+"),
+		Format:           joinFormatStrings(formats, ids),
 		Ext:              getCompatibleExt(formats),
 		TBR:              tbr,
 		FilesizeApprox:   sizeApprox,
@@ -936,6 +936,7 @@ func mergeFormats(f1, f2 infodict.Format) infodict.Format {
 		out.VCodec = v.VCodec
 		out.VBR = v.VBR
 		out.DynamicRange = v.DynamicRange
+		out.AspectRatio = v.AspectRatio
 	}
 	if len(audioFmts) == 1 {
 		a := audioFmts[0]
@@ -945,6 +946,25 @@ func mergeFormats(f1, f2 infodict.Format) infodict.Format {
 		out.AudioChannels = a.AudioChannels
 	}
 	return out
+}
+
+// joinFormatStrings builds the "format" string of a merged format as yt-dlp
+// does: the derived format strings of each component joined with '+'.
+func joinFormatStrings(formats []infodict.Format, ids []string) string {
+	parts := make([]string, 0, len(formats))
+	for _, f := range formats {
+		s := f.Format
+		if s == "" {
+			s = f.FormatID
+		}
+		if s != "" {
+			parts = append(parts, s)
+		}
+	}
+	if s := strings.Join(parts, "+"); s != "" {
+		return s
+	}
+	return strings.Join(ids, "+")
 }
 
 func dedupe(in []string) []string {

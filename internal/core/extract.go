@@ -3,6 +3,8 @@ package core
 import (
 	"fmt"
 	mathrand "math/rand"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -231,6 +233,8 @@ func (y *YoutubeDL) processVideoResult(info *infodict.InfoDict, download bool) (
 		return nil, &extractor.NoFormatsError{Msg: "No video formats found!", Expected: true, VideoID: info.ID, IE: info.ExtractorKey}
 	}
 
+	y.processFormatFields(formats, info.Duration)
+
 	// sort
 	sortFormats(formats, &optionsSortParams{
 		preferFree: y.opts.PreferFreeFormats,
@@ -266,6 +270,12 @@ func (y *YoutubeDL) processVideoResult(info *infodict.InfoDict, download bool) (
 	info.Width = primary.Width
 	info.Height = primary.Height
 	info.Resolution = formatResolution(primary)
+	info.AspectRatio = primary.AspectRatio
+	info.DynamicRange = primary.DynamicRange
+	info.VBR = primary.VBR
+	info.ABR = primary.ABR
+	info.VideoExt = primary.VideoExt
+	info.AudioExt = primary.AudioExt
 	if primary.FPS != 0 {
 		info.FPS = primary.FPS
 	}
@@ -415,6 +425,110 @@ func formatResolution(f infodict.Format) string {
 		return fmt.Sprintf("%dx?", f.Width)
 	}
 	return "audio only"
+}
+
+// formatResolutionDefault mirrors yt-dlp's YoutubeDL.format_resolution with a
+// caller-provided default (used when no dimensions are available).
+func formatResolutionDefault(f infodict.Format, def string) string {
+	if f.VCodec == "none" && f.ACodec != "none" {
+		return "audio only"
+	}
+	if f.Resolution != "" {
+		return f.Resolution
+	}
+	if f.Width > 0 && f.Height > 0 {
+		return fmt.Sprintf("%dx%d", f.Width, f.Height)
+	} else if f.Height > 0 {
+		return fmt.Sprintf("%dp", f.Height)
+	} else if f.Width > 0 {
+		return fmt.Sprintf("%dx?", f.Width)
+	}
+	return def
+}
+
+func formatNoteSuffix(f infodict.Format) string {
+	if f.FormatNote != "" {
+		return fmt.Sprintf(" (%s)", f.FormatNote)
+	}
+	return ""
+}
+
+// round2 rounds to two decimals using correct (round-half-to-even) semantics on
+// the exact binary value, matching Python's round(). A naive
+// math.Round(v*100)/100 diverges on values like 426/240 = 1.775.
+func round2(v float64) float64 {
+	r, err := strconv.ParseFloat(strconv.FormatFloat(v, 'f', 2, 64), 64)
+	if err != nil {
+		return v
+	}
+	return r
+}
+
+// processFormatFields ports the derived per-format fields computed by
+// YoutubeDL.process_video_result: FormatSorter._fill_sorting_fields plus the
+// resolution/dynamic_range/aspect_ratio/format derivations.
+func (y *YoutubeDL) processFormatFields(formats []infodict.Format, duration float64) {
+	for i := range formats {
+		f := &formats[i]
+
+		// FormatSorter._fill_sorting_fields
+		fillSortingFields(f)
+
+		// process_video_result derivations
+		switch f.Ext {
+		case "aac", "opus", "mp3", "flac", "vorbis":
+			if f.ACodec == "" {
+				f.ACodec = f.Ext
+			}
+		}
+		if f.Resolution == "" {
+			if r := formatResolutionDefault(*f, ""); r != "" {
+				f.Resolution = r
+			}
+		}
+		if f.DynamicRange == "" && f.VCodec != "none" {
+			f.DynamicRange = "SDR"
+		}
+		if f.AspectRatio == nil && f.Width > 0 && f.Height > 0 {
+			ar := round2(float64(f.Width) / float64(f.Height))
+			f.AspectRatio = &ar
+		}
+		if f.ManifestURL == "" && f.Filesize == 0 && f.FilesizeApprox == 0 {
+			var tbrp, durp *float64
+			if f.TBR != 0 {
+				tbrp = &f.TBR
+			}
+			if duration != 0 {
+				durp = &duration
+			}
+			if fa := utils.FilesizeFromTbr(tbrp, durp); fa != nil {
+				f.FilesizeApprox = *fa
+			}
+		}
+		if y.client != nil && len(y.client.Headers) > 0 {
+			h := make(map[string]string, len(y.client.Headers))
+			for k, v := range y.client.Headers {
+				h[k] = v
+			}
+			f.HTTPHeaders = h
+		}
+
+		f.FormatID = sanitizeFormatID(f.FormatID)
+		if f.Format == "" {
+			f.Format = fmt.Sprintf("%s - %s%s", f.FormatID, formatResolutionDefault(*f, "unknown"), formatNoteSuffix(*f))
+		}
+	}
+}
+
+var reFormatID = regexp.MustCompile(`[\s,/+\[\]()]`)
+
+// sanitizeFormatID ports the format_id sanitization applied before grouping
+// formats (characters used in format selector expressions are replaced).
+func sanitizeFormatID(id string) string {
+	if id == "" {
+		return id
+	}
+	return reFormatID.ReplaceAllString(id, "_")
 }
 
 func sortFormats(formats []infodict.Format, p *optionsSortParams) {

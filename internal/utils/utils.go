@@ -433,45 +433,64 @@ func DetermineExt(urlOrName, def string) string {
 	return def
 }
 
+// mimeExt mirrors yt-dlp's utils.mimetype2ext MAP (keys are either the full
+// mimetype or a subtype, looked up in that order).
 var mimeExt = map[string]string{
-	"video/mp4": "mp4", "video/webm": "webm", "video/x-matroska": "mkv",
-	"video/quicktime": "mov", "video/3gpp": "3gp", "video/mp2t": "ts",
-	"video/ogg": "ogv", "video/x-flv": "flv", "video/x-msvideo": "avi",
-	"video/avif": "avif",
-	"audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/aac": "aac",
-	"audio/ogg": "ogg", "audio/opus": "opus", "audio/flac": "flac",
-	"audio/wav": "wav", "audio/x-wav": "wav", "audio/webm": "weba",
-	"audio/vnd.dolby.dd-raw":        "ac3",
-	"application/vnd.apple.mpegurl": "m3u8",
-	"application/x-mpegurl":         "m3u8",
-	"application/dash+xml":          "mpd",
-	"application/f4m":               "f4m",
-	"image/jpeg":                    "jpg", "image/png": "png", "image/webp": "webp",
-	"text/html": "html", "application/json": "json", "application/xml": "xml",
-	"text/xml": "xml", "text/vtt": "vtt", "application/x-subrip": "srt",
-	"image/gif": "gif",
+	// video
+	"3gpp": "3gp", "mp2t": "ts", "mp4": "mp4", "mpeg": "mpeg",
+	"mpegurl": "m3u8", "quicktime": "mov", "webm": "webm", "vp9": "vp9",
+	"video/ogg": "ogv", "x-flv": "flv", "x-m4v": "m4v", "x-matroska": "mkv",
+	"x-mng": "mng", "x-mp4-fragmented": "mp4", "x-ms-asf": "asf",
+	"x-ms-wmv": "wmv", "x-msvideo": "avi", "vnd.dlna.mpeg-tts": "mpeg",
+	// application (streaming playlists)
+	"dash+xml": "mpd", "f4m+xml": "f4m", "hds+xml": "f4m",
+	"vnd.apple.mpegurl": "m3u8", "vnd.ms-sstr+xml": "ism", "x-mpegurl": "m3u8",
+	// audio
+	"audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/webm": "webm",
+	"audio/x-matroska": "mka", "audio/x-mpegurl": "m3u", "aacp": "aac",
+	"flac": "flac", "midi": "mid", "ogg": "ogg", "wav": "wav", "wave": "wav",
+	"x-aac": "aac", "x-flac": "flac", "x-m4a": "m4a", "x-realaudio": "ra", "x-wav": "wav",
+	// image
+	"avif": "avif", "bmp": "bmp", "gif": "gif", "jpeg": "jpg", "png": "png",
+	"svg+xml": "svg", "tiff": "tif", "vnd.wap.wbmp": "wbmp", "webp": "webp",
+	"x-icon": "ico", "x-jng": "jng", "x-ms-bmp": "bmp",
+	// caption
+	"filmstrip+json": "fs", "smptett+xml": "tt", "ttaf+xml": "dfxp",
+	"ttml+xml": "ttml", "x-ms-sami": "sami", "x-subrip": "srt", "x-srt": "srt",
+	// misc
+	"gzip": "gz", "json": "json", "xml": "xml", "zip": "zip",
 }
 
-// Mimetype2ext maps a MIME type to a file extension.
+// Mimetype2ext maps a MIME type to a file extension, mirroring yt-dlp's
+// utils.mimetype2ext: the subtype (or full mimetype) is looked up in the MAP,
+// then the part after the last '+' is tried, and finally the subtype is
+// returned with '+' replaced by '.'.
 func Mimetype2ext(mt string) string {
 	if mt == "" {
 		return ""
 	}
-	mt = strings.ToLower(strings.TrimSpace(mt))
-	if i := strings.IndexByte(mt, ';'); i >= 0 {
-		mt = strings.TrimSpace(mt[:i])
+	mimetype := strings.ToLower(strings.TrimSpace(strings.SplitN(mt, ";", 2)[0]))
+	subtype := mimetype
+	if i := strings.LastIndexByte(mimetype, '/'); i >= 0 {
+		subtype = mimetype[i+1:]
 	}
-	if ext, ok := mimeExt[mt]; ok {
-		return ext
+	for _, key := range []string{mimetype, subtype, lastPlusSegment(subtype)} {
+		if key == "" {
+			continue
+		}
+		if ext, ok := mimeExt[key]; ok {
+			return ext
+		}
 	}
-	// audio/mp4a / video/mp4a style
-	if strings.HasSuffix(mt, "+xml") {
-		return "xml"
+	return strings.ReplaceAll(subtype, "+", ".")
+}
+
+// lastPlusSegment returns the segment after the last '+'.
+func lastPlusSegment(s string) string {
+	if i := strings.LastIndexByte(s, '+'); i >= 0 {
+		return s[i+1:]
 	}
-	if strings.HasPrefix(mt, "video/") || strings.HasPrefix(mt, "audio/") {
-		return strings.TrimPrefix(strings.TrimPrefix(mt, "video/"), "audio/")
-	}
-	return ""
+	return s
 }
 
 // DetermineProtocol mirrors utils.determine_protocol.
