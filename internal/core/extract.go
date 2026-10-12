@@ -270,6 +270,12 @@ func (y *YoutubeDL) processVideoResult(info *infodict.InfoDict, download bool) (
 	info.Width = primary.Width
 	info.Height = primary.Height
 	info.Resolution = formatResolution(primary)
+	info.AspectRatio = primary.AspectRatio
+	info.DynamicRange = primary.DynamicRange
+	info.VBR = primary.VBR
+	info.ABR = primary.ABR
+	info.VideoExt = primary.VideoExt
+	info.AudioExt = primary.AudioExt
 	if primary.FPS != 0 {
 		info.FPS = primary.FPS
 	}

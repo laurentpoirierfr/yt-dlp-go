@@ -252,11 +252,13 @@ func parseM3U8FormatsAndSubtitles(doc, m3u8URL, ext, entryProtocol string) ([]in
 			// Unified Streaming Platform
 			if m := reM3U8UnifiedStream.FindStringSubmatch(f.URL); m != nil {
 				if a, err := strconv.ParseFloat(m[1], 64); err == nil {
-					f.ABR = a / 1000
+					abr := a / 1000
+					f.ABR = &abr
 				}
 				if m[2] != "" {
 					if v, err := strconv.ParseFloat(m[2], 64); err == nil {
-						f.VBR = v / 1000
+						vbr := v / 1000
+						f.VBR = &vbr
 					}
 				}
 			}
