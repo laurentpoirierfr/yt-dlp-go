@@ -1,9 +1,11 @@
 package youtube
 
 import (
+	"math"
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/extractor"
@@ -299,7 +301,98 @@ func (b *Base) extractFormatsAndSubtitles(
 		b.addHLSManifestFormats(sd, clientName, videoID, liveStatus, solvedN, skipJS, st, &formats)
 	}
 
+	formats = append(formats, b.extractStoryboards(prs, duration)...)
+
 	return formats, subs, autoCaps, nil
+}
+
+// extractStoryboards mirrors yt-dlp's YoutubeIE._extract_storyboard: it turns
+// the playerStoryboardSpecRenderer spec into sbN formats carrying the tile
+// grid (rows/columns) and the per-image fragments.
+func (b *Base) extractStoryboards(prs []map[string]any, duration float64) []infodict.Format {
+	spec := ""
+	for _, pr := range prs {
+		if s := utils.TraverseStr(pr, "storyboards.playerStoryboardSpecRenderer.spec"); s != "" {
+			spec = s
+			break
+		}
+	}
+	if spec == "" {
+		return nil
+	}
+
+	parts := strings.Split(spec, "|")
+	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
+		parts[i], parts[j] = parts[j], parts[i]
+	}
+	baseRaw := ""
+	if len(parts) > 0 {
+		baseRaw = parts[len(parts)-1]
+		parts = parts[:len(parts)-1]
+	}
+	baseURL := utils.URLJoin("https://i.ytimg.com/", baseRaw)
+	if baseURL == "" {
+		return nil
+	}
+	L := len(parts) - 1
+
+	var out []infodict.Format
+	for i, args := range parts {
+		fields := strings.Split(args, "#")
+		counts := make([]int64, 0, 5)
+		valid := len(fields) == 8
+		if valid {
+			for _, a := range fields[:5] {
+				v := utils.IntOrNone(a)
+				if v == nil {
+					valid = false
+					break
+				}
+				counts = append(counts, *v)
+			}
+		}
+		if !valid {
+			b.ReportWarning("Malformed storyboard %d: %s", i, strings.Join(fields, "#"))
+			continue
+		}
+		width, height, frameCount, cols, rows := counts[0], counts[1], counts[2], counts[3], counts[4]
+		N, sigh := fields[6], fields[7]
+
+		u := strings.ReplaceAll(strings.ReplaceAll(baseURL, "$L", strconv.Itoa(L-i)), "$N", N) + "&sigh=" + sigh
+		fragmentCount := float64(frameCount) / float64(cols*rows)
+		fragmentDuration := 0.0
+		if fragmentCount != 0 {
+			fragmentDuration = duration / fragmentCount
+		}
+		n := int(math.Ceil(fragmentCount))
+		fragments := make([]infodict.Fragment, 0, n)
+		for j := 0; j < n; j++ {
+			fragments = append(fragments, infodict.Fragment{
+				URL:      strings.ReplaceAll(u, "$M", strconv.Itoa(j)),
+				Duration: math.Min(fragmentDuration, duration-float64(j)*fragmentDuration),
+			})
+		}
+		fps := 0.0
+		if duration != 0 {
+			fps = float64(frameCount) / duration
+		}
+		out = append(out, infodict.Format{
+			FormatID:   "sb" + strconv.Itoa(i),
+			FormatNote: "storyboard",
+			Ext:        "mhtml",
+			Protocol:   "mhtml",
+			ACodec:     "none",
+			VCodec:     "none",
+			URL:        u,
+			Width:      int(width),
+			Height:     int(height),
+			FPS:        fps,
+			Rows:       int(rows),
+			Columns:    int(cols),
+			Fragments:  fragments,
+		})
+	}
+	return out
 }
 
 // addHLSManifestFormats downloads and parses a player response's HLS (m3u8)
