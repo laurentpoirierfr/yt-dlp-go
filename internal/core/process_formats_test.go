@@ -7,12 +7,10 @@ import (
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/options"
 )
 
-func pfloat(f float64) *float64 { return &f }
-
 func TestProcessFormatFields(t *testing.T) {
 	y := New(options.DefaultOptions())
 	formats := []infodict.Format{
-		{FormatID: "140", URL: "https://x/audio.m4a", Ext: "m4a", VCodec: "none", ACodec: "mp4a.40.2", TBR: 129.796, ABR: 129.796, FormatNote: "medium"},
+		{FormatID: "140", URL: "https://x/audio.m4a", Ext: "m4a", VCodec: "none", ACodec: "mp4a.40.2", TBR: 129.796, ABR: ptrFloat(129.796), FormatNote: "medium"},
 		{FormatID: "137", URL: "https://x/video.mp4", Ext: "mp4", VCodec: "avc1", ACodec: "none", Width: 1920, Height: 1080, TBR: 4000, FormatNote: "1080p"},
 		{FormatID: "sb0", URL: "https://x/sb.jpg", Ext: "mhtml", VCodec: "none", ACodec: "none", Width: 320, Height: 180, FormatNote: "storyboard"},
 		{FormatID: "426", URL: "https://x/v.mp4", Ext: "mp4", VCodec: "avc1", ACodec: "none", Width: 426, Height: 240},

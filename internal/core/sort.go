@@ -573,24 +573,39 @@ func fillSortingFields(f *infodict.Format) {
 		f.AudioExt = "none"
 	}
 	if f.VCodec == "none" {
-		f.VBR = 0
+		f.VBR = ptrFloat(0)
 	}
 	if f.ACodec == "none" {
-		f.ABR = 0
+		f.ABR = ptrFloat(0)
 	}
-	if f.VBR == 0 && f.VCodec != "none" {
+	if (f.VBR == nil || *f.VBR == 0) && f.VCodec != "none" {
 		if f.TBR != 0 {
-			f.VBR = f.TBR - f.ABR
+			if v := f.TBR - derefFloat(f.ABR); v != 0 {
+				f.VBR = &v
+			}
 		}
 	}
-	if f.ABR == 0 && f.ACodec != "none" {
+	if (f.ABR == nil || *f.ABR == 0) && f.ACodec != "none" {
 		if f.TBR != 0 {
-			f.ABR = f.TBR - f.VBR
+			if v := f.TBR - derefFloat(f.VBR); v != 0 {
+				f.ABR = &v
+			}
 		}
 	}
 	if f.TBR == 0 {
-		f.TBR = f.VBR + f.ABR
+		if v := derefFloat(f.VBR) + derefFloat(f.ABR); v != 0 {
+			f.TBR = v
+		}
 	}
+}
+
+func ptrFloat(f float64) *float64 { return &f }
+
+func derefFloat(p *float64) float64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 func absInt(i int) int {

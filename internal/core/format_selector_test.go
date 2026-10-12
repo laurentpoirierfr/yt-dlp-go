@@ -87,7 +87,7 @@ func TestSplitFormatFilters(t *testing.T) {
 
 func TestFormatFilters(t *testing.T) {
 	video := infodict.Format{FormatID: "133", VCodec: "avc1.4D400C", ACodec: "none", Ext: "mp4", Height: 240, TBR: 183, FormatNote: "240p", Filesize: 200 * 1024}
-	audio := infodict.Format{FormatID: "251", VCodec: "none", ACodec: "opus", Ext: "webm", ABR: 106}
+	audio := infodict.Format{FormatID: "251", VCodec: "none", ACodec: "opus", Ext: "webm", ABR: ptrFloat(106)}
 
 	cases := []struct {
 		spec    string

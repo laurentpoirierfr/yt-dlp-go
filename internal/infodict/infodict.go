@@ -112,14 +112,20 @@ type InfoDict struct {
 	Entries       []*InfoDict `json:"entries,omitempty"`
 
 	// Selected format (copied from the chosen Format during processing)
-	FormatID   string  `json:"format_id,omitempty"`
-	VCodec     string  `json:"vcodec,omitempty"`
-	ACodec     string  `json:"acodec,omitempty"`
-	Width      int     `json:"width,omitempty"`
-	Height     int     `json:"height,omitempty"`
-	Resolution string  `json:"resolution,omitempty"`
-	FPS        float64 `json:"fps,omitempty"`
-	TBR        float64 `json:"tbr,omitempty"`
+	FormatID     string   `json:"format_id,omitempty"`
+	VCodec       string   `json:"vcodec,omitempty"`
+	ACodec       string   `json:"acodec,omitempty"`
+	Width        int      `json:"width,omitempty"`
+	Height       int      `json:"height,omitempty"`
+	Resolution   string   `json:"resolution,omitempty"`
+	AspectRatio  *float64 `json:"aspect_ratio,omitempty"`
+	DynamicRange string   `json:"dynamic_range,omitempty"`
+	VBR          *float64 `json:"vbr,omitempty"`
+	ABR          *float64 `json:"abr,omitempty"`
+	VideoExt     string   `json:"video_ext,omitempty"`
+	AudioExt     string   `json:"audio_ext,omitempty"`
+	FPS          float64  `json:"fps,omitempty"`
+	TBR          float64  `json:"tbr,omitempty"`
 
 	// Output
 	Filepath string `json:"filepath,omitempty"`
@@ -154,8 +160,8 @@ type Format struct {
 	AspectRatio   *float64 `json:"aspect_ratio,omitempty"`
 	FPS           float64  `json:"fps,omitempty"`
 	TBR           float64  `json:"tbr,omitempty"`
-	VBR           float64  `json:"vbr,omitempty"`
-	ABR           float64  `json:"abr,omitempty"`
+	VBR           *float64 `json:"vbr,omitempty"`
+	ABR           *float64 `json:"abr,omitempty"`
 	ASR           int      `json:"asr,omitempty"`
 	AudioChannels int      `json:"audio_channels,omitempty"`
 
