@@ -168,6 +168,8 @@ type Format struct {
 	Language     string `json:"language,omitempty"`
 	Container    string `json:"container,omitempty"`
 	Protocol     string `json:"protocol,omitempty"`
+	VideoExt     string `json:"video_ext,omitempty"`
+	AudioExt     string `json:"audio_ext,omitempty"`
 
 	Preference         *int     `json:"preference,omitempty"`
 	Quality            *float64 `json:"quality,omitempty"`
