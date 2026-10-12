@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/extractor"
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/jsc"
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/utils"
@@ -15,6 +16,69 @@ type streamID struct {
 	itag  string
 	track string
 	isDrc bool
+}
+
+// resQuality is one entry of yt-dlp's `res_qualities` mapping.
+type resQuality struct {
+	height  int
+	quality string
+}
+
+// formatState carries the cross-pass bookkeeping of
+// _extract_formats_and_subtitles: the itag -> {(proto, language)} set, the
+// itag/height -> quality maps and the original/default language map.
+type formatState struct {
+	itags         map[string]map[string]bool
+	itagQualities map[string]string
+	resQualities  []resQuality
+	languageMap   map[int]string
+	allFormats    bool
+	liveStatus    string
+}
+
+func newFormatState(liveStatus string) *formatState {
+	return &formatState{
+		itags:         map[string]map[string]bool{},
+		itagQualities: map[string]string{},
+		resQualities:  []resQuality{{0, ""}},
+		languageMap:   map[int]string{10: "", 5: ""},
+		liveStatus:    liveStatus,
+	}
+}
+
+// setResQuality records (or updates) the quality for a resolution height.
+func (st *formatState) setResQuality(height int, quality string) {
+	for i := range st.resQualities {
+		if st.resQualities[i].height == height {
+			st.resQualities[i].quality = quality
+			return
+		}
+	}
+	st.resQualities = append(st.resQualities, resQuality{height, quality})
+}
+
+// nearestResQuality returns the quality of the closest known height (ties keep
+// the earliest inserted entry, like Python's min()).
+func (st *formatState) nearestResQuality(height int) (string, bool) {
+	if len(st.resQualities) == 0 {
+		return "", false
+	}
+	best := 0
+	bestDiff := absInt(st.resQualities[0].height - height)
+	for i := 1; i < len(st.resQualities); i++ {
+		d := absInt(st.resQualities[i].height - height)
+		if d < bestDiff {
+			best, bestDiff = i, d
+		}
+	}
+	return st.resQualities[best].quality, true
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 var reManifestN = regexp.MustCompile(`/n/([^/]+)/`)
@@ -37,13 +101,16 @@ func parseQueryString(raw string) map[string][]string {
 	return m
 }
 
-// extractFormatsAndSubtitles is the port of _extract_formats_and_subtitles
-// (HTTPS formats only for this milestone; manifest formats handled separately).
+// extractFormatsAndSubtitles is the port of _extract_formats_and_subtitles.
+// HTTPS formats are always extracted; for each player response its HLS
+// manifest (when present) is parsed too (DASH manifests are not yet handled).
 func (b *Base) extractFormatsAndSubtitles(
 	prs []map[string]any, videoID string, duration float64, liveStatus string,
 ) ([]infodict.Format, map[string][]infodict.Subtitle, map[string][]infodict.Subtitle, error) {
 	streamIDs := map[streamID]bool{}
-	itags := map[string]map[string]bool{}
+	st := newFormatState(liveStatus)
+	st.allFormats = hasFormatsArg(b, "duplicate")
+	itags := st.itags
 
 	// ---- pass 1: collect challenges -------------------------------------
 	nChallenges := []string{}
@@ -176,7 +243,7 @@ func (b *Base) extractFormatsAndSubtitles(
 					}
 				}
 
-				fmtDict := b.processFormatStream(f, clientName, duration, requirePoToken)
+				fmtDict := b.processFormatStream(f, clientName, duration, requirePoToken, st)
 				if fmtDict == nil {
 					continue
 				}
@@ -221,7 +288,206 @@ func (b *Base) extractFormatsAndSubtitles(
 	}
 
 	subs, autoCaps := b.extractSubtitles(prs)
+
+	// ---- manifests: HLS (m3u8) -------------------------------------------
+	for _, pr := range prs {
+		sd, _ := pr["streamingData"].(map[string]any)
+		if sd == nil {
+			continue
+		}
+		clientName := utils.Str(sd["__yt_dlp_client"])
+		b.addHLSManifestFormats(sd, clientName, videoID, liveStatus, solvedN, skipJS, st, &formats)
+	}
+
 	return formats, subs, autoCaps, nil
+}
+
+// addHLSManifestFormats downloads and parses a player response's HLS (m3u8)
+// manifest, mirroring the hls block of _extract_formats_and_subtitles.
+func (b *Base) addHLSManifestFormats(
+	sd map[string]any, clientName, videoID, liveStatus string,
+	solvedN map[string]string, skipJS bool, st *formatState, formats *[]infodict.Format,
+) {
+	hlsURL := utils.Str(sd["hlsManifestUrl"])
+	if hlsURL == "" {
+		return
+	}
+	if hasArgValue(b, "skip", "hls") {
+		return
+	}
+	client := InnertubeClients[clientName]
+	if client == nil {
+		return
+	}
+
+	if nCh := manifestNChallenge(hlsURL); nCh != "" {
+		res, ok := solvedN[nCh]
+		if !ok {
+			return
+		}
+		hlsURL = strings.ReplaceAll(hlsURL, "/n/"+nCh+"/", "/n/"+res+"/")
+	}
+
+	potPolicy := client.gvsPolicy(ProtoHLS)
+	requirePoToken := gvsPotRequired(potPolicy, false, false)
+	if requirePoToken && !hasFormatsArg(b, "missing_pot") {
+		return // no PO token provider in this milestone
+	}
+
+	doc, err := b.DownloadWebpage(extractor.NewRequest(hlsURL, nil, nil), videoID,
+		"Downloading m3u8 information", "Failed to download m3u8 information", false, "")
+	if err != nil || doc == "" {
+		return
+	}
+	if !strings.HasPrefix(doc, "#EXTM3U") {
+		b.ReportWarning("Response data has no m3u header")
+		return
+	}
+
+	fmts, _ := parseM3U8FormatsAndSubtitles(doc, hlsURL, "mp4", "m3u8_native")
+	for i := range fmts {
+		itag := ""
+		if m := reM3U8Itag.FindStringSubmatch(fmts[i].URL); m != nil {
+			itag = m[1]
+		}
+		if b.processManifestFormat(&fmts[i], "hls", clientName, itag, st) {
+			*formats = append(*formats, fmts[i])
+		}
+	}
+}
+
+// processManifestFormat is the port of process_manifest_format.
+func (b *Base) processManifestFormat(f *infodict.Format, proto, clientName, itag string, st *formatState) bool {
+	key := proto + "|" + f.Language
+	if st.itags[itag] == nil {
+		st.itags[itag] = map[string]bool{}
+	}
+	itagSet := st.itags[itag]
+	if !st.allFormats && itagSet[key] {
+		return false
+	}
+
+	if f.SourcePreference == nil {
+		sp := -1
+		f.SourcePreference = &sp
+	}
+	// Deprioritize since these pre-merged m3u8 formats may have lower quality
+	// audio streams.
+	if (clientName == "web_safari" || clientName == "web_embedded") && proto == "hls" &&
+		st.liveStatus != "is_live" && st.liveStatus != "post_live" {
+		*f.SourcePreference--
+	}
+
+	itagSet[key] = true
+
+	switch {
+	case itag != "" && st.allFormats:
+		f.FormatID = itag + "-" + proto
+	case anyProtoDiff(itagSet, proto):
+		f.FormatID = itag + "-" + proto
+	case itag != "":
+		f.FormatID = itag
+	}
+
+	switch {
+	case f.Language != "" && f.Language == st.languageMap[10]:
+		f.FormatNote = joinNonempty(" ", f.FormatNote, "(original)")
+		lp := 10
+		f.LanguagePreference = &lp
+	case f.Language != "" && f.Language == st.languageMap[5]:
+		f.FormatNote = joinNonempty(" ", f.FormatNote, "(default)")
+		lp := 5
+		f.LanguagePreference = &lp
+	}
+
+	if itag == "616" || itag == "235" {
+		f.FormatNote = joinNonempty(" ", f.FormatNote, "Premium")
+		*f.SourcePreference += 100
+	}
+
+	base := strings.SplitN(f.FormatID, "-", 2)[0]
+	if q, ok := st.itagQualities[base]; ok {
+		qv := qualityQ(q)
+		f.Quality = &qv
+	} else {
+		qv := -1.0
+		f.Quality = &qv
+	}
+	if *f.Quality == -1 && f.Height > 0 {
+		if q, ok := st.nearestResQuality(f.Height); ok {
+			qv := qualityQ(q)
+			f.Quality = &qv
+		}
+	}
+	if f.FPS <= 1 {
+		f.FPS = 0
+	}
+	if proto == "hls" && truthyAny(f.HasDRM) {
+		f.HasDRM = "maybe"
+		*f.SourcePreference -= 5
+	}
+	return true
+}
+
+// qualityQ mirrors yt-dlp's qualities(...) lookup: the index in qualityOrder,
+// or -1 when unknown.
+func qualityQ(qid string) float64 {
+	for i, name := range qualityOrder {
+		if name == qid {
+			return float64(i)
+		}
+	}
+	return -1
+}
+
+// anyProtoDiff reports whether the itag set contains a protocol other than
+// proto. Keys are encoded as "proto|language".
+func anyProtoDiff(set map[string]bool, proto string) bool {
+	for k := range set {
+		p := k
+		if i := strings.IndexByte(k, '|'); i >= 0 {
+			p = k[:i]
+		}
+		if p != proto {
+			return true
+		}
+	}
+	return false
+}
+
+func truthyAny(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return t
+	case string:
+		return t != ""
+	case int:
+		return t != 0
+	case float64:
+		return t != 0
+	default:
+		return true
+	}
+}
+
+func manifestNChallenge(u string) string {
+	if m := reManifestN.FindStringSubmatch(pathOf(u)); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+func hasArgValue(b *Base, arg, item string) bool {
+	for _, s := range b.GetExtractorArg(arg) {
+		for _, part := range strings.Split(s, ",") {
+			if strings.TrimSpace(part) == item {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func hasFormatsArg(b *Base, item string) bool {
@@ -282,16 +548,26 @@ func updateURLQuery(u string, update map[string]string) string {
 }
 
 // processFormatStream is the port of process_format_stream.
-func (b *Base) processFormatStream(fs map[string]any, clientName string, duration float64, missingPot bool) *infodict.Format {
+func (b *Base) processFormatStream(fs map[string]any, clientName string, duration float64, missingPot bool, st *formatState) *infodict.Format {
 	itag := utils.Str(fs["itag"])
 	audioTrack, _ := fs["audioTrack"].(map[string]any)
 	quality := utils.Str(fs["quality"])
 	height := utils.SafeInt(fs["height"])
 	if quality == "tiny" || quality == "" {
-		quality = strings.ToLower(utils.Str(fs["audioQuality"]))
+		if aq := strings.ToLower(utils.Str(fs["audioQuality"])); aq != "" {
+			quality = aq
+		}
 	}
 	if itag == "17" {
 		quality = "tiny"
+	}
+	if quality != "" {
+		if itag != "" {
+			st.itagQualities[itag] = quality
+		}
+		if height > 0 {
+			st.setResQuality(height, quality)
+		}
 	}
 
 	hasDRM := fs["drmFamilies"] != nil
@@ -393,8 +669,14 @@ func (b *Base) processFormatStream(fs map[string]any, clientName string, duratio
 			langPref = -10
 		case strings.Contains(display, "original"):
 			langPref = 10
+			if language != "" && st.languageMap[10] == "" {
+				st.languageMap[10] = language
+			}
 		case audioTrack["audioIsDefault"] != nil:
 			langPref = 5
+			if language != "" && st.languageMap[5] == "" {
+				st.languageMap[5] = language
+			}
 		}
 	}
 
@@ -417,6 +699,12 @@ func (b *Base) processFormatStream(fs map[string]any, clientName string, duratio
 		DownloaderOptions:  map[string]any{"http_chunk_size": 10 << 20},
 	}
 	out.Quality = qualityIndex(quality)
+	// yt-dlp deprioritizes DRC (dynamic range compressed) formats via a
+	// half-point quality penalty (see youtube/_video.py).
+	if fs["isDrc"] != nil && out.Quality != nil {
+		v := *out.Quality - 0.5
+		out.Quality = &v
+	}
 
 	if m := reMimeType.FindStringSubmatch(utils.Str(fs["mimeType"])); m != nil {
 		out.Ext = utils.Mimetype2ext(strings.Split(m[1], ";")[0])
@@ -446,19 +734,21 @@ func f64d(p *float64) float64 {
 	return *p
 }
 
-// qualityIndex maps yt-dlp's quality names to a sortable integer.
+// qualityOrder mirrors yt-dlp's YouTube `qualities([...])` list.
 var qualityOrder = []string{
-	"tiny", "small", "medium", "large", "hd720", "hd1080", "hd1440", "hd2160",
-	"highres", "premium",
+	"tiny",
+	"audio_quality_ultralow", "audio_quality_low", "audio_quality_medium", "audio_quality_high",
+	"small", "medium", "large", "hd720", "hd1080", "hd1440", "hd2160", "hd2880", "highres",
 }
 
-func qualityIndex(q string) *int {
+func qualityIndex(q string) *float64 {
 	if q == "" {
 		return nil
 	}
 	for i, name := range qualityOrder {
 		if name == q {
-			return ip(int64(i))
+			v := float64(i)
+			return &v
 		}
 	}
 	return nil

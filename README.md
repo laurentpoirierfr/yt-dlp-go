@@ -22,7 +22,7 @@ en packages claire (`cmd/`, `internal/`, `pkg/`).
 | Pipeline de sélection de formats (`-f`, `-S`) | Fonctionnel |
 | Téléchargement HTTP + fusion ffmpeg | Fonctionnel |
 | Métadonnées JSON (`-j`, `-J`) | Fonctionnel |
-| Sidecar `.info.json` (`--write-info-json`) | Fonctionnel |
+| Sidecar `.info.json` / `.description` (`--write-info-json`, `--write-description`) | Fonctionnel |
 | Vignettes (`--write-thumbnail`, `--write-all-thumbnails`, `--list-thumbnails`) | Fonctionnel |
 | Sous-titres (`--write-subs`, `--write-auto-subs`, `--all-subs`, `--sub-langs`, `--sub-format`, `--convert-subs`, `--list-subs`) | Fonctionnel |
 | Playlists | Complet (pagination, plages/items, reverse/random, archive) |
@@ -147,8 +147,14 @@ yt-dlp-go -s "URL"              # n'écrit rien sur le disque
 yt-dlp-go --get-url "URL"       # affiche l'URL du média sélectionné
 yt-dlp-go --get-title "URL"     # affiche le titre
 yt-dlp-go --get-id "URL"        # affiche l'identifiant
+yt-dlp-go --get-filename "URL"  # affiche le nom de fichier cible
 yt-dlp-go --skip-download "URL" # extrait et affiche, sans télécharger
 ```
+
+`-s/--simulate` n'écrit jamais rien sur le disque. En revanche,
+`--skip-download` ne télécharge pas le média mais écrit **quand même** les
+sidecars demandés (`--write-info-json`, `--write-description`,
+`--write-thumbnail`, sous-titres), comme yt-dlp.
 
 ## Interface terminal (IHM)
 
@@ -219,6 +225,9 @@ yt-dlp-go -J "URL"
 # Écrire un sidecar <video>.info.json à côté du fichier téléchargé
 yt-dlp-go --write-info-json "URL"
 
+# Écrire la description dans <video>.description
+yt-dlp-go --write-description "URL"
+
 # Télécharger la vignette (meilleure) ou toutes les vignettes
 yt-dlp-go --write-thumbnail "URL"
 yt-dlp-go --write-all-thumbnails "URL"
@@ -231,16 +240,15 @@ YTDL_JSON_PRETTY=1 yt-dlp-go -j "URL"
 ```
 
 `--write-info-json` écrit `<lecteur>.info.json` (le dictionnaire complet de la
-vidéo) à côté du fichier médiatique, après un téléchargement réussi.
+vidéo) à côté du fichier médiatique (ou avec `--skip-download`, sans le média).
+
+`--write-description` écrit la description brute dans `<lecteur>.description`.
 
 `--write-thumbnail` écrit la meilleure vignette sous `<lecteur>.<ext>` ;
 `--write-all-thumbnails` écrit chaque vignette disponible sous
 `<lecteur>.<index>.<ext>` (les vignettes indisponibles sont ignorées avec un
 avertissement). `--list-thumbnails` affiche les vignettes disponibles sans rien
 télécharger.
-
-`--write-description` n'est pas encore implémenté : il est **refusé
-explicitement** (erreur) plutôt qu'ignoré silencieusement.
 
 ## Noms et dossiers de sortie
 
@@ -433,7 +441,7 @@ Formats     -f/--format, -S/--format-sort, --format-sort-force,
 Simulation  -s/--simulate, --skip-download, --no-progress, --get-url,
             --get-title, --get-id, --get-filename
 JSON        -j/--dump-json, -J/--dump-single-json, -F/--list-formats
-Métadonnées --write-info-json
+Métadonnées --write-info-json, --write-description
 Vignettes   --write-thumbnail, --write-all-thumbnails, --list-thumbnails
 Erreurs     -i/--ignore-errors
 Réseau      --proxy, --socket-timeout, --user-agent, --add-header,
@@ -463,7 +471,7 @@ des indices négatifs nécessitent la lecture complète.
 **Reconnues pour compatibilité mais pas encore implémentées :** les définir
 provoque une erreur explicite au lieu d'être ignorées silencieusement
 (ex. `--remux-video`, `--merge-output-format`, `--limit-rate`,
-`--write-description`, `--break-on-reject`).
+`--break-on-reject`).
 
 ## Architecture
 

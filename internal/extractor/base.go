@@ -231,6 +231,9 @@ func (b *Base) RequestWebpage(r *Request, videoID, note, errnote string, fatal b
 	if b.downloader == nil {
 		return nil, fmt.Errorf("extractor not attached to a downloader")
 	}
+	if videoID != "" {
+		b.videoID = videoID
+	}
 	if !b.firstWebpageReq {
 		if si := b.Opts().SleepIntervalRequests; si > 0 {
 			b.ToScreen("Sleeping %g seconds ...", si)
@@ -265,7 +268,7 @@ func (b *Base) RequestWebpage(r *Request, videoID, note, errnote string, fatal b
 		}
 		full := fmt.Sprintf("%s: %s", errmsg, err)
 		if fatal {
-			return nil, b.NewExtractorError(full, false, err)
+			return nil, b.NewExtractorError(full, networking.IsNetworkError(err), err)
 		}
 		b.ReportWarning("%s", full)
 		return nil, nil
@@ -299,7 +302,7 @@ func (b *Base) webpageReadContent(resp *networking.Response, videoID, note, errn
 		}
 		full := fmt.Sprintf("%s: %s", msg, err)
 		if fatal {
-			return "", nil, b.NewExtractorError(full, false, err)
+			return "", nil, b.NewExtractorError(full, networking.IsNetworkError(err), err)
 		}
 		b.ReportWarning("%s", full)
 		return "", nil, nil
@@ -652,12 +655,12 @@ func (b *Base) XForwardedForIP() string { return b.xForwardedForIP }
 
 // RaiseGeoRestricted signals a geo restriction with optional countries.
 func (b *Base) RaiseGeoRestricted(msg string, countries []string) error {
-	return &GeoRestrictedError{Msg: msg, Countries: countries, IE: b.IEKey()}
+	return &GeoRestrictedError{Msg: msg, Countries: countries, IE: b.IEKey(), VideoID: b.videoID}
 }
 
 // RaiseNoFormats signals "no formats found".
 func (b *Base) RaiseNoFormats(msg string, expected bool) error {
-	return &NoFormatsError{Msg: msg, Expected: expected, VideoID: b.videoID}
+	return &NoFormatsError{Msg: msg, Expected: expected, VideoID: b.videoID, IE: b.IEKey()}
 }
 
 // Sleep sleeps for the given duration (used by retry helpers).

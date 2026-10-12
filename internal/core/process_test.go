@@ -212,7 +212,7 @@ func TestWriteInfoJSONSidecar(t *testing.T) {
 	if err := ydl.processInfo(info); err != nil {
 		t.Fatalf("processInfo: %v", err)
 	}
-	wantFile := filepath.Join(dir, "My Video [vid123].mp4.info.json")
+	wantFile := filepath.Join(dir, "My Video [vid123].info.json")
 	data, err := os.ReadFile(wantFile)
 	if err != nil {
 		t.Fatalf("sidecar not written: %v", err)
@@ -226,5 +226,57 @@ func TestWriteInfoJSONSidecar(t *testing.T) {
 	}
 	if want := filepath.Join(dir, "My Video [vid123].mp4"); info.Filepath != want {
 		t.Errorf("Filepath = %q, want %q", info.Filepath, want)
+	}
+}
+
+func TestSkipDownloadWritesSidecars(t *testing.T) {
+	dir := t.TempDir()
+	o := options.DefaultOptions()
+	o.SkipDownload = true
+	o.WriteInfoJSON = true
+	o.WriteDescription = true
+	o.Paths = map[string]string{"home": dir}
+	ydl := New(o)
+	downloaded := false
+	ydl.SetDownloader(func(info *infodict.InfoDict, formats []infodict.Format) error {
+		downloaded = true
+		return nil
+	})
+	info := mkVideo("vid789")
+	info.Title = "Skip"
+	info.Description = "desc"
+	if err := ydl.processInfo(info); err != nil {
+		t.Fatalf("processInfo: %v", err)
+	}
+	if downloaded {
+		t.Error("downloader must not run with --skip-download")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Skip [vid789].info.json")); err != nil {
+		t.Errorf("info.json not written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Skip [vid789].description")); err != nil {
+		t.Errorf("description not written: %v", err)
+	}
+}
+
+func TestWriteDescriptionSidecar(t *testing.T) {
+	dir := t.TempDir()
+	o := options.DefaultOptions()
+	o.WriteDescription = true
+	o.Paths = map[string]string{"home": dir}
+	ydl := New(o)
+	ydl.SetDownloader(func(info *infodict.InfoDict, formats []infodict.Format) error { return nil })
+	info := mkVideo("vid456")
+	info.Title = "My Video"
+	info.Description = "line one\nline two"
+	if err := ydl.processInfo(info); err != nil {
+		t.Fatalf("processInfo: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "My Video [vid456].description"))
+	if err != nil {
+		t.Fatalf("description sidecar not written: %v", err)
+	}
+	if string(data) != "line one\nline two" {
+		t.Errorf("description = %q", string(data))
 	}
 }
