@@ -248,7 +248,7 @@ func (y *YoutubeDL) processVideoResult(info *infodict.InfoDict, download bool) (
 	}
 	if len(selected) == 0 {
 		return nil, &extractor.NoFormatsError{
-			Msg:      fmt.Sprintf("Requested format is not available: %s", spec),
+			Msg:      "Requested format is not available. Use --list-formats for a list of available formats",
 			Expected: true, VideoID: info.ID,
 		}
 	}

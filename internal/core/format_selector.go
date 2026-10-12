@@ -25,8 +25,15 @@ var videoExts = map[string]bool{
 
 var storyboardExts = map[string]bool{"mhtml": true}
 
-// selectorFn picks formats from a slice.
-type selectorFn func(formats []infodict.Format) []infodict.Format
+// selectContext mirrors yt-dlp's selector context (see YoutubeDL._select_formats).
+type selectContext struct {
+	formats           []infodict.Format
+	hasMergedFormat   bool
+	incompleteFormats bool
+}
+
+// selectorFn picks formats from a selection context.
+type selectorFn func(ctx *selectContext) []infodict.Format
 
 func hasVideo(f infodict.Format) bool { return f.VCodec != "" && f.VCodec != "none" }
 func hasAudio(f infodict.Format) bool { return f.ACodec != "" && f.ACodec != "none" }
@@ -37,7 +44,30 @@ func (y *YoutubeDL) selectFormats(formats []infodict.Format, spec string) ([]inf
 	if err != nil {
 		return nil, err
 	}
-	return fn(formats), nil
+	allNoVideo, allNoAudio := true, true
+	for _, f := range formats {
+		if hasVideo(f) {
+			allNoVideo = false
+		}
+		if hasAudio(f) {
+			allNoAudio = false
+		}
+	}
+	ctx := &selectContext{
+		formats:           formats,
+		hasMergedFormat:   hasVideoAndAudioAny(formats),
+		incompleteFormats: allNoVideo || allNoAudio,
+	}
+	return fn(ctx), nil
+}
+
+func hasVideoAndAudioAny(formats []infodict.Format) bool {
+	for _, f := range formats {
+		if hasVideo(f) && hasAudio(f) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------
@@ -223,10 +253,10 @@ func (y *YoutubeDL) buildSelectorFn(n *selNode) (selectorFn, error) {
 			}
 			fs[i] = f
 		}
-		base := func(formats []infodict.Format) []infodict.Format {
+		base := func(ctx *selectContext) []infodict.Format {
 			var out []infodict.Format
 			for _, f := range fs {
-				out = append(out, f(formats)...)
+				out = append(out, f(ctx)...)
 			}
 			return out
 		}
@@ -244,12 +274,12 @@ func (y *YoutubeDL) buildSelectorFn(n *selNode) (selectorFn, error) {
 			}
 			rest[i] = f
 		}
-		base := func(formats []infodict.Format) []infodict.Format {
-			if got := first(formats); len(got) > 0 {
+		base := func(ctx *selectContext) []infodict.Format {
+			if got := first(ctx); len(got) > 0 {
 				return got
 			}
 			for _, f := range rest {
-				if got := f(formats); len(got) > 0 {
+				if got := f(ctx); len(got) > 0 {
 					return got
 				}
 			}
@@ -265,10 +295,10 @@ func (y *YoutubeDL) buildSelectorFn(n *selNode) (selectorFn, error) {
 		if err != nil {
 			return nil, err
 		}
-		base := func(formats []infodict.Format) []infodict.Format {
+		base := func(ctx *selectContext) []infodict.Format {
 			var out []infodict.Format
-			for _, f1 := range s1(formats) {
-				for _, f2 := range s2(formats) {
+			for _, f1 := range s1(ctx) {
+				for _, f2 := range s2(ctx) {
 					out = append(out, mergeFormats(f1, f2))
 				}
 			}
@@ -293,9 +323,9 @@ func applyFilters(base selectorFn, filters []string) (selectorFn, error) {
 		}
 		fns = append(fns, fn)
 	}
-	return func(formats []infodict.Format) []infodict.Format {
-		kept := make([]infodict.Format, 0, len(formats))
-		for _, f := range formats {
+	return func(ctx *selectContext) []infodict.Format {
+		kept := make([]infodict.Format, 0, len(ctx.formats))
+		for _, f := range ctx.formats {
 			ok := true
 			for _, fn := range fns {
 				if !fn(f) {
@@ -307,7 +337,8 @@ func applyFilters(base selectorFn, filters []string) (selectorFn, error) {
 				kept = append(kept, f)
 			}
 		}
-		return base(kept)
+		ctx.formats = kept
+		return base(ctx)
 	}, nil
 }
 
@@ -319,10 +350,10 @@ func (y *YoutubeDL) singleSelector(spec string) selectorFn {
 	lower := strings.ToLower(spec)
 
 	if lower == "all" {
-		return func(formats []infodict.Format) []infodict.Format {
-			out := make([]infodict.Format, len(formats))
-			for i := range formats {
-				out[i] = formats[len(formats)-1-i]
+		return func(ctx *selectContext) []infodict.Format {
+			out := make([]infodict.Format, len(ctx.formats))
+			for i := range ctx.formats {
+				out[i] = ctx.formats[len(ctx.formats)-1-i]
 			}
 			return out
 		}
@@ -355,15 +386,15 @@ func (y *YoutubeDL) singleSelector(spec string) selectorFn {
 		filterAny := func(f infodict.Format) bool {
 			return filter(f) && (hasVideo(f) || hasAudio(f))
 		}
-		return func(formats []infodict.Format) []infodict.Format {
+		return func(ctx *selectContext) []infodict.Format {
 			var matches []infodict.Format
-			for _, f := range formats {
+			for _, f := range ctx.formats {
 				if filterAny(f) {
 					matches = append(matches, f)
 				}
 			}
-			if len(matches) == 0 && formatFallback {
-				for _, f := range formats {
+			if len(matches) == 0 && formatFallback && ctx.incompleteFormats {
+				for _, f := range ctx.formats {
 					if hasVideo(f) || hasAudio(f) {
 						matches = append(matches, f)
 					}
@@ -380,36 +411,38 @@ func (y *YoutubeDL) singleSelector(spec string) selectorFn {
 	}
 
 	if audioExts[lower] {
-		return func(formats []infodict.Format) []infodict.Format {
-			for i := len(formats) - 1; i >= 0; i-- {
-				if formats[i].Ext == lower && hasAudio(formats[i]) {
-					return []infodict.Format{formats[i]}
+		return func(ctx *selectContext) []infodict.Format {
+			for i := len(ctx.formats) - 1; i >= 0; i-- {
+				if ctx.formats[i].Ext == lower && hasAudio(ctx.formats[i]) {
+					return []infodict.Format{ctx.formats[i]}
 				}
 			}
 			return nil
 		}
 	}
 	if videoExts[lower] {
-		return func(formats []infodict.Format) []infodict.Format {
-			for i := len(formats) - 1; i >= 0; i-- {
-				f := formats[i]
+		return func(ctx *selectContext) []infodict.Format {
+			for i := len(ctx.formats) - 1; i >= 0; i-- {
+				f := ctx.formats[i]
 				if f.Ext == lower && hasVideo(f) && hasAudio(f) {
 					return []infodict.Format{f}
 				}
 			}
-			for i := len(formats) - 1; i >= 0; i-- {
-				f := formats[i]
-				if f.Ext == lower && hasVideo(f) {
-					return []infodict.Format{f}
+			if !ctx.hasMergedFormat {
+				for i := len(ctx.formats) - 1; i >= 0; i-- {
+					f := ctx.formats[i]
+					if f.Ext == lower && hasVideo(f) {
+						return []infodict.Format{f}
+					}
 				}
 			}
 			return nil
 		}
 	}
 	if storyboardExts[lower] {
-		return func(formats []infodict.Format) []infodict.Format {
-			for i := len(formats) - 1; i >= 0; i-- {
-				f := formats[i]
+		return func(ctx *selectContext) []infodict.Format {
+			for i := len(ctx.formats) - 1; i >= 0; i-- {
+				f := ctx.formats[i]
 				if f.Ext == lower && !hasAudio(f) && !hasVideo(f) {
 					return []infodict.Format{f}
 				}
@@ -418,10 +451,10 @@ func (y *YoutubeDL) singleSelector(spec string) selectorFn {
 		}
 	}
 	// format_id
-	return func(formats []infodict.Format) []infodict.Format {
-		for i := len(formats) - 1; i >= 0; i-- {
-			if formats[i].FormatID == spec {
-				return []infodict.Format{formats[i]}
+	return func(ctx *selectContext) []infodict.Format {
+		for i := len(ctx.formats) - 1; i >= 0; i-- {
+			if ctx.formats[i].FormatID == spec {
+				return []infodict.Format{ctx.formats[i]}
 			}
 		}
 		return nil
