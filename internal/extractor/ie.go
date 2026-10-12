@@ -44,10 +44,36 @@ type ExtractorError struct {
 	Cause    error
 }
 
+// bugReportsMessage mirrors yt-dlp's _utils.bug_reports_message (default
+// before=';'), byte-for-byte.
+const bugReportsMessage = "; please report this issue on  https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using  yt-dlp -U"
+
+// formatField mirrors yt-dlp's utils.format_field for the string forms used
+// in error message rendering: absent values render as nothing.
+func formatField(s, tmpl string) string {
+	if s == "" {
+		return ""
+	}
+	return fmt.Sprintf(tmpl, s)
+}
+
+// causeRepr produces a Python %r-like representation of a cause, so that
+// " (caused by %r)" matches yt-dlp: network HTTP errors render as
+// "<HTTPError <code>: <status>>", anything else as a quoted string.
+func causeRepr(cause error) string {
+	if he, ok := cause.(*networking.HTTPError); ok {
+		return fmt.Sprintf("<HTTPError %d: %s>", he.StatusCode, he.Status)
+	}
+	return fmt.Sprintf("%q", cause.Error())
+}
+
 func (e *ExtractorError) Error() string {
-	msg := e.Msg
-	if e.IE != "" {
-		msg = fmt.Sprintf("[%s] %s", e.IE, msg)
+	msg := formatField(e.IE, "[%s] ") + formatField(e.VideoID, "%s: ") + e.Msg
+	if e.Cause != nil {
+		msg += fmt.Sprintf(" (caused by %s)", causeRepr(e.Cause))
+	}
+	if !e.Expected {
+		msg += bugReportsMessage
 	}
 	return msg
 }
@@ -64,9 +90,12 @@ type GeoRestrictedError struct {
 	Msg       string
 	Countries []string
 	IE        string
+	VideoID   string
 }
 
-func (e *GeoRestrictedError) Error() string { return e.Msg }
+func (e *GeoRestrictedError) Error() string {
+	return formatField(e.IE, "[%s] ") + formatField(e.VideoID, "%s: ") + e.Msg
+}
 
 // UnsupportedURLError is raised by UnsupportedURLIE.
 type UnsupportedURLError struct{ URL string }
@@ -80,9 +109,16 @@ type NoFormatsError struct {
 	Msg      string
 	Expected bool
 	VideoID  string
+	IE       string
 }
 
-func (e *NoFormatsError) Error() string { return e.Msg }
+func (e *NoFormatsError) Error() string {
+	msg := formatField(e.IE, "[%s] ") + formatField(e.VideoID, "%s: ") + e.Msg
+	if !e.Expected {
+		msg += bugReportsMessage
+	}
+	return msg
+}
 
 // RegexNotFoundError is raised when a required pattern doesn't match.
 type RegexNotFoundError struct{ Msg string }

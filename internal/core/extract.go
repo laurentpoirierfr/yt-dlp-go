@@ -228,7 +228,7 @@ func (y *YoutubeDL) processVideoResult(info *infodict.InfoDict, download bool) (
 		formats = append(formats, f)
 	}
 	if len(formats) == 0 {
-		return nil, &extractor.NoFormatsError{Msg: "No video formats found", Expected: true, VideoID: info.ID}
+		return nil, &extractor.NoFormatsError{Msg: "No video formats found!", Expected: true, VideoID: info.ID, IE: info.ExtractorKey}
 	}
 
 	// sort
@@ -249,7 +249,7 @@ func (y *YoutubeDL) processVideoResult(info *infodict.InfoDict, download bool) (
 	if len(selected) == 0 {
 		return nil, &extractor.NoFormatsError{
 			Msg:      "Requested format is not available. Use --list-formats for a list of available formats",
-			Expected: true, VideoID: info.ID,
+			Expected: true, VideoID: info.ID, IE: info.ExtractorKey,
 		}
 	}
 	primary := selected[0]
