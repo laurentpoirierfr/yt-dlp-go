@@ -107,3 +107,36 @@ func TestDetermineExt(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestMimetype2ext(t *testing.T) {
+	cases := map[string]string{
+		"audio/webm":                    "webm",
+		"audio/webm; codecs=opus":       "webm",
+		"audio/mp4":                     "m4a",
+		"audio/mp4; codecs=mp4a":        "m4a",
+		"audio/mpeg":                    "mp3",
+		"audio/ogg":                     "ogg",
+		"audio/opus":                    "opus",
+		"video/mp4":                     "mp4",
+		"video/webm":                    "webm",
+		"video/quicktime":               "mov",
+		"video/x-matroska":              "mkv",
+		"application/vnd.apple.mpegurl": "m3u8",
+		"application/x-mpegurl":         "m3u8",
+		"application/dash+xml":          "mpd",
+		"application/ttml+xml":          "ttml",
+		"image/jpeg":                    "jpg",
+		"image/png":                     "png",
+	}
+	for mt, want := range cases {
+		if got := Mimetype2ext(mt); got != want {
+			t.Errorf("Mimetype2ext(%q) = %q, want %q", mt, got, want)
+		}
+	}
+	if got := Mimetype2ext(""); got != "" {
+		t.Errorf("Mimetype2ext(\"\") = %q, want empty", got)
+	}
+	if got := Mimetype2ext("application/x-foo"); got != "x-foo" {
+		t.Errorf("Mimetype2ext fallback = %q, want %q", got, "x-foo")
+	}
+}
