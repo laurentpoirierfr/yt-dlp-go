@@ -13,12 +13,12 @@ func TestGetCompatibleExt(t *testing.T) {
 		want string
 	}{
 		{
-			name: "av1 + opus -> webm",
+			name: "av1 + opus -> mkv (webm default replaced)",
 			in: []infodict.Format{
 				{VCodec: "av01.0.00M.08", ACodec: "none", Ext: "mp4"},
 				{VCodec: "none", ACodec: "opus", Ext: "webm"},
 			},
-			want: "webm",
+			want: "mkv",
 		},
 		{
 			name: "avc1 + mp4a -> mp4",
@@ -29,12 +29,12 @@ func TestGetCompatibleExt(t *testing.T) {
 			want: "mp4",
 		},
 		{
-			name: "vp9 + opus -> webm",
+			name: "vp9 + opus -> mkv",
 			in: []infodict.Format{
 				{VCodec: "vp9", ACodec: "none", Ext: "webm"},
 				{VCodec: "none", ACodec: "opus", Ext: "webm"},
 			},
-			want: "webm",
+			want: "mkv",
 		},
 		{
 			name: "vp9 + mp4a falls back to mkv",

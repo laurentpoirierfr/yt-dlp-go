@@ -960,8 +960,9 @@ func dedupe(in []string) []string {
 }
 
 // getCompatibleExt picks the container extension for a merged format,
-// mirroring yt-dlp's utils.get_compatible_ext (with no merge_output_format
-// preference, so 'mkv' is allowed).
+// mirroring yt-dlp's utils.get_compatible_ext, except that the 'webm'
+// default is replaced by 'mkv' (this project's product default: merged
+// video output uses mkv rather than webm).
 func getCompatibleExt(formats []infodict.Format) string {
 	var vexts, aexts, vcodecs, acodecs []string
 	for _, f := range formats {
@@ -990,7 +991,7 @@ func getCompatibleExt(formats []infodict.Format) string {
 	acodec := sanitizeCodec(acodecs)
 	for _, c := range compatibleCodecs {
 		if containsStr(c.codecs, vcodec) && containsStr(c.codecs, acodec) {
-			return c.ext
+			return mergedContainer(c.ext)
 		}
 	}
 
@@ -1007,15 +1008,24 @@ func getCompatibleExt(formats []infodict.Format) string {
 			current[e] = true
 		}
 		if len(current) == 1 {
-			return ext
+			return mergedContainer(ext)
 		}
 		for _, set := range compatibleExts {
 			if isSuperset(set, current) {
-				return ext
+				return mergedContainer(ext)
 			}
 		}
 	}
 	return "mkv"
+}
+
+// mergedContainer maps the yt-dlp-compatible container to this project's
+// default merged output: webm/weba become mkv.
+func mergedContainer(ext string) string {
+	if ext == "webm" || ext == "weba" {
+		return "mkv"
+	}
+	return ext
 }
 
 // sanitizeCodec reproduces yt-dlp's codec normalization: take the first codec,
