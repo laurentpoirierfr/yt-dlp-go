@@ -147,3 +147,85 @@ func TestSelectFormatsInvalidFilter(t *testing.T) {
 		t.Errorf("valid filter: got %d formats, err %v", len(got), err)
 	}
 }
+
+func TestSelectBestWorstFallbackGated(t *testing.T) {
+	y := &YoutubeDL{}
+	video := infodict.Format{FormatID: "269", VCodec: "avc1.4D400B", ACodec: "none", Ext: "mp4"}
+	videoHi := infodict.Format{FormatID: "399", VCodec: "av01.0.00M.08", ACodec: "none", Ext: "mp4"}
+	audio := infodict.Format{FormatID: "251", VCodec: "none", ACodec: "opus", Ext: "webm"}
+
+	// YouTube-like: video-only + audio-only but no combined format.
+	// incomplete_formats is False, so best/worst must NOT fall back.
+	single := []infodict.Format{video, videoHi, audio}
+	cases := map[string][]string{
+		"best":          nil,
+		"worst":         nil,
+		"b":             nil,
+		"best[ext=mp4]": nil,
+	}
+	for spec, want := range cases {
+		got, _ := y.selectFormats(single, spec)
+		if !equalStrings(fmtIDs(got), want) {
+			t.Errorf("%s on single-stream formats = %v, want %v", spec, fmtIDs(got), want)
+		}
+	}
+
+	// SoundCloud-like: all formats audio-only -> incomplete_formats True -> best
+	// falls back to the best audio-only format.
+	audioOnly := []infodict.Format{
+		{FormatID: "1", VCodec: "none", ACodec: "mp4a.40.2", Ext: "m4a"},
+		{FormatID: "2", VCodec: "none", ACodec: "opus", Ext: "webm"},
+	}
+	if got, _ := y.selectFormats(audioOnly, "best"); !equalStrings(fmtIDs(got), []string{"2"}) {
+		t.Errorf("best on audio-only = %v, want [2]", fmtIDs(got))
+	}
+	if got, _ := y.selectFormats(audioOnly, "worst"); !equalStrings(fmtIDs(got), []string{"1"}) {
+		t.Errorf("worst on audio-only = %v, want [1]", fmtIDs(got))
+	}
+}
+
+func TestSelectVideoExtSeparateFallback(t *testing.T) {
+	y := &YoutubeDL{}
+	videoMP4 := infodict.Format{FormatID: "269", VCodec: "avc1.4D400B", ACodec: "none", Ext: "mp4"}
+	mergedWebm := infodict.Format{FormatID: "22", VCodec: "vp9", ACodec: "opus", Ext: "webm"}
+	mergedMP4 := infodict.Format{FormatID: "18", VCodec: "avc1", ACodec: "mp4a.40.2", Ext: "mp4"}
+
+	// A merged (non-mp4) format exists -> no fallback to video-only mp4.
+	withMerged := []infodict.Format{videoMP4, mergedWebm}
+	if got, _ := y.selectFormats(withMerged, "mp4"); len(got) != 0 {
+		t.Errorf("mp4 with a merged webm = %v, want empty", fmtIDs(got))
+	}
+	// A merged mp4 format exists -> selected directly.
+	withMergedMP4 := []infodict.Format{videoMP4, mergedMP4}
+	if got, _ := y.selectFormats(withMergedMP4, "mp4"); !equalStrings(fmtIDs(got), []string{"18"}) {
+		t.Errorf("mp4 with merged mp4 = %v, want [18]", fmtIDs(got))
+	}
+	// No merged format at all -> fall back to the video-only mp4.
+	noMerged := []infodict.Format{videoMP4, {FormatID: "251", VCodec: "none", ACodec: "opus", Ext: "webm"}}
+	if got, _ := y.selectFormats(noMerged, "mp4"); !equalStrings(fmtIDs(got), []string{"269"}) {
+		t.Errorf("mp4 without merged format = %v, want [269]", fmtIDs(got))
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func fmtIDs(got []infodict.Format) []string {
+	if len(got) == 0 {
+		return nil
+	}
+	out := make([]string, len(got))
+	for i := range got {
+		out[i] = got[i].FormatID
+	}
+	return out
+}
