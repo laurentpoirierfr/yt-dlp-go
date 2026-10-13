@@ -5,6 +5,7 @@ package core
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -52,6 +53,7 @@ func New(opts *options.Options) *YoutubeDL {
 	}
 	ydl.sink = render.NewPlainSink(opts)
 	ydl.initClient()
+	ydl.initLogging()
 	return ydl
 }
 
@@ -62,6 +64,12 @@ func (y *YoutubeDL) SetSink(s events.Sink) {
 		s = events.NopSink{}
 	}
 	y.sink = s
+	ydl := y
+	level := slog.LevelInfo
+	if ydl.opts.Verbose {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(newSinkHandler(ydl.sink, level)))
 }
 
 // Sink returns the current event sink.
@@ -78,6 +86,14 @@ func (y *YoutubeDL) initClient() {
 	c := networking.NewClient()
 	_ = c.ApplyOptions(y.opts.Proxy, y.opts.SocketTimeout, y.opts.NoCheckCertificate, headers, y.opts.UserAgent)
 	y.client = c
+}
+
+func (y *YoutubeDL) initLogging() {
+	level := slog.LevelInfo
+	if y.opts.Verbose {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(newSinkHandler(y.sink, level)))
 }
 
 // RegisterExtractors installs the available extractors (called by the CLI with
