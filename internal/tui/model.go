@@ -103,6 +103,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.ready = true
 		m.vp.Width = m.width - 2
+		if h := m.height - m.headerHeight() - m.jobsHeight() - 2; h > 2 {
+			m.vp.Height = h - 1
+		} else {
+			m.vp.Height = h
+		}
 		m.resizeBars()
 		return m, nil
 
@@ -114,24 +119,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p := events.PostProcess(msg)
 		switch p.Status {
 		case events.StatusStarted:
-			m.appendLog(fmt.Sprintf("[%s] processing…", p.Name))
+			m.appendLogStyle(dimStyle, fmt.Sprintf("[%s] processing…", p.Name))
 		case events.StatusFinished:
-			m.appendLog(fmt.Sprintf("[%s] done", p.Name))
+			m.appendLogStyle(okStyle, fmt.Sprintf("[%s] done", p.Name))
 		case events.StatusError:
-			m.appendLog(fmt.Sprintf("[%s] %v", p.Name, p.Err))
+			m.appendLogStyle(errStyle, fmt.Sprintf("[%s] %v", p.Name, p.Err))
 		}
 		return m, nil
 
 	case logMsg:
 		l := events.Log(msg)
-		m.appendLog(l.Text)
+		m.appendLogStyle(levelStyle(l.Level.String()), l.Text)
 		return m, nil
 
 	case workDoneMsg:
 		m.done = true
 		m.err = msg.err
 		if msg.err != nil {
-			m.appendLog("ERROR: " + msg.err.Error())
+			m.appendLogStyle(errStyle, "ERROR: "+msg.err.Error())
 		}
 		return m, tea.Tick(1500*time.Millisecond, func(time.Time) tea.Msg {
 			return tea.Quit()
@@ -216,12 +221,12 @@ func (m *Model) applyProgress(p events.Progress) {
 	case events.StatusFinished:
 		if prev != events.StatusFinished {
 			m.finished++
-			m.appendLog("Completed: " + j.title)
+			m.appendLogStyle(okStyle, "Completed: "+j.title)
 		}
 	case events.StatusError:
 		if prev != events.StatusError {
 			m.failed++
-			m.appendLog(fmt.Sprintf("Failed: %s: %v", j.title, p.Err))
+			m.appendLogStyle(errStyle, fmt.Sprintf("Failed: %s: %v", j.title, p.Err))
 		}
 	}
 }
@@ -244,12 +249,12 @@ func (m *Model) jobByKey(key string) (*job, bool) {
 	return m.jobs[i], true
 }
 
-func (m *Model) appendLog(text string) {
+func (m *Model) appendLogStyle(style lipgloss.Style, text string) {
 	for _, line := range strings.Split(text, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		m.logs = append(m.logs, line)
+		m.logs = append(m.logs, style.Render(line))
 	}
 	const maxLogs = 2000
 	if len(m.logs) > maxLogs {
@@ -439,7 +444,7 @@ func (m *Model) viewJob(j *job) []string {
 	if len([]rune(title)) > maxW {
 		title = string([]rune(title)[:maxW])
 	}
-	line1 := fmt.Sprintf("%s %s", marker, title)
+	line1 := fmt.Sprintf("%s %s", marker, jobTitleStyle.Render(title))
 	line2 := "  " + j.bar.ViewAs(j.percent) + "  " + m.jobStats(j)
 	return []string{line1, line2}
 }

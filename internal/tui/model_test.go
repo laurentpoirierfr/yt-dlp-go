@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/events"
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
@@ -76,3 +77,32 @@ func TestJobLifecycleCounts(t *testing.T) {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+func TestLogLevelsAreStyled(t *testing.T) {
+	cases := map[string]lipgloss.TerminalColor{
+		"warning": lipgloss.Color("214"),
+		"error":   lipgloss.Color("196"),
+		"debug":   lipgloss.Color("241"),
+	}
+	for level, want := range cases {
+		if got := levelStyle(level).GetForeground(); got != want {
+			t.Fatalf("levelStyle(%q) foreground = %v, want %v", level, got, want)
+		}
+	}
+	if got := levelStyle("info").GetForeground(); got != (lipgloss.NoColor{}) {
+		t.Fatalf("info should be unstyled, got foreground %v", got)
+	}
+}
+
+func TestLogMessagesRendered(t *testing.T) {
+	m := New()
+	sized(m, 100, 30)
+	m.Update(logMsg(events.Log{Level: events.LevelWarning, Text: "attention"}))
+	m.Update(logMsg(events.Log{Level: events.LevelError, Text: "ligne1\nligne2"}))
+	view := m.View()
+	for _, want := range []string{"attention", "ligne1", "ligne2"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, view)
+		}
+	}
+}
