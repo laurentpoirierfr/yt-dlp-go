@@ -150,8 +150,7 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 
 	// The TUI is used automatically for real downloads on an interactive
 	// terminal; --tui forces it, --no-tui (or -q) disables it.
-	useTUI := !opts.NoTUI && !opts.Quiet && !simulate && tui.Supported()
-	if useTUI {
+	if tuiEnabled(opts, simulate, tui.Supported()) {
 		err := tui.Run(func(sink events.Sink) error {
 			ydl.SetSink(sink)
 			if code := process(); code != 0 {
@@ -166,6 +165,16 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 		return 0
 	}
 	return process()
+}
+
+// tuiEnabled reports whether the interactive interface should run. It is off
+// in quiet/simulation modes and with --no-tui, enabled by default on an
+// interactive terminal, and forced by --tui.
+func tuiEnabled(opts *options.Options, simulate, tty bool) bool {
+	if opts.NoTUI || opts.Quiet || simulate {
+		return false
+	}
+	return opts.TUI || tty
 }
 
 func merge(info *infodict.InfoDict, opts *options.Options, sink events.Sink) {
