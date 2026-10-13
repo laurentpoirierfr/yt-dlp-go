@@ -15,6 +15,9 @@ var (
 	reM3U8      = regexp.MustCompile(`(?i)https?://[^\s"'<>]+\.m3u8[^\s"'<>]*`)
 	reMPD       = regexp.MustCompile(`(?i)https?://[^\s"'<>]+\.mpd[^\s"'<>]*`)
 	reJSONURL   = regexp.MustCompile(`"(?:contentUrl|embedUrl|videoUrl)"\s*:\s*"([^"]+)"`)
+	// reSchemeDomain mirrors Python r'[^\s/]+\.[^\s/]+/' used by the no-scheme
+	// fixup path to detect domain-looking input.
+	reSchemeDomain = regexp.MustCompile(`^[^\s/]+\.[^\s/]+/`)
 )
 
 // GenericIE is the last-resort extractor for arbitrary pages.
@@ -33,13 +36,26 @@ func NewGenericIE() *GenericIE {
 
 func init() { extractor.Register(NewGenericIE()) }
 
-// Suitable matches every http(s) URL (fallback extractor).
-func (ie *GenericIE) Suitable(u string) bool {
-	return strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://")
-}
+// Suitable matches every URL (fallback extractor, mirroring yt-dlp's
+// GenericIE._VALID_URL = r'.*').
+func (ie *GenericIE) Suitable(string) bool { return true }
 
 // RealExtract scrapes a page for a playable media URL.
 func (ie *GenericIE) RealExtract(u string) (*infodict.InfoDict, error) {
+	// Protocol-relative URL: re-dispatch with the preferred HTTP scheme.
+	if strings.HasPrefix(u, "//") {
+		return extractor.URLResult(ie.httpScheme()+u, "", "", ""), nil
+	}
+	// URLs without a scheme go through the default_search fixup. Only the
+	// default mode ('fixup_error') is implemented.
+	if urlScheme(u) == "" {
+		if reSchemeDomain.MatchString(u) {
+			ie.ReportWarning("The url doesn't specify the protocol, trying with https")
+			return extractor.URLResult("https://"+u, "", "", ""), nil
+		}
+		return nil, ie.NewExtractorError(pyRepr(u)+" is not a valid URL", true, nil)
+	}
+
 	id := ie.GenericID(u)
 	webpage, err := ie.DownloadWebpage(extractor.NewRequest(u, nil, nil), id, "Downloading webpage", "", true, "")
 	if err != nil {
@@ -131,6 +147,76 @@ func absURL(base, ref string) string {
 		return ref
 	}
 	return ref
+}
+
+// httpScheme returns the scheme (with colon) to use for protocol-relative
+// URLs, mirroring InfoExtractor.http_scheme.
+func (ie *GenericIE) httpScheme() string {
+	if ie.Opts().PreferInsecure {
+		return "http:"
+	}
+	return "https:"
+}
+
+// urlScheme extracts the URL scheme like Python's urllib.parse.urlparse: the
+// scheme is the leading run matching [A-Za-z][A-Za-z0-9+.-]* terminated by a
+// colon that appears before any '/', '?' or '#'. Returns "" if none.
+func urlScheme(u string) string {
+	if u == "" || !isASCIIAlpha(u[0]) {
+		return ""
+	}
+	for i := 1; i < len(u); i++ {
+		c := u[i]
+		if c == ':' {
+			return strings.ToLower(u[:i])
+		}
+		if c == '/' || c == '?' || c == '#' {
+			return ""
+		}
+		if !isSchemeChar(c) {
+			return ""
+		}
+	}
+	return ""
+}
+
+func isASCIIAlpha(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+func isSchemeChar(c byte) bool {
+	return isASCIIAlpha(c) || (c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.'
+}
+
+// pyRepr renders s like Python's repr() for the common single-line case, so
+// error messages such as "{url!r} is not a valid URL" match yt-dlp.
+func pyRepr(s string) string {
+	quote := byte('\'')
+	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
+		quote = '"'
+	}
+	var b strings.Builder
+	b.WriteByte(quote)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '\\':
+			b.WriteString(`\\`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			if c == quote {
+				b.WriteByte('\\')
+			}
+			b.WriteByte(c)
+		}
+	}
+	b.WriteByte(quote)
+	return b.String()
 }
 
 func extOf(u string) string {
