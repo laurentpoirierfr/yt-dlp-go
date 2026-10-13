@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -15,8 +16,7 @@ import (
 // an error instead of being silently ignored.
 var unsupportedFlags = map[string]string{
 	// Post-processing
-	"merge-output-format": "merging always stream-copies into the format's native container",
-	"remux-video":         "remuxing is not implemented yet",
+	"remux-video": "remuxing is not implemented yet",
 
 	// Format selection extras
 	"allow-unplayable-formats": "unsupported format override is not implemented",
@@ -50,6 +50,24 @@ func validateConvertSubtitles(o *options.Options) error {
 	default:
 		return fmt.Errorf("--convert-subs: unsupported format %q (supported: srt, vtt)", o.ConvertSubtitles)
 	}
+}
+
+// mergeOutputFormatRE mirrors yt-dlp's validation of --merge-output-format
+// (re.match, i.e. a prefix match: one common video container, optionally
+// followed by "/" and more containers).
+var mergeOutputFormatRE = regexp.MustCompile(`^(avi|flv|mkv|mov|mp4|webm)(/(avi|flv|mkv|mov|mp4|webm))*`)
+
+// validateMergeOutputFormat ports yt-dlp's validate_regex call for
+// --merge-output-format. It only validates when the flag was explicitly set
+// (yt-dlp skips validation for its None default).
+func validateMergeOutputFormat(cmd *cobra.Command, o *options.Options) error {
+	if !cmd.Flags().Changed("merge-output-format") {
+		return nil
+	}
+	if !mergeOutputFormatRE.MatchString(o.MergeOutputFormat) {
+		return fmt.Errorf("invalid merge output format %q given", o.MergeOutputFormat)
+	}
+	return nil
 }
 
 // validateUnsupported returns an error if the user explicitly set one or more

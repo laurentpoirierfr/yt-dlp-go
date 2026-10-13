@@ -8,9 +8,10 @@ import (
 
 func TestGetCompatibleExt(t *testing.T) {
 	cases := []struct {
-		name string
-		in   []infodict.Format
-		want string
+		name        string
+		in          []infodict.Format
+		preferences []string
+		want        string
 	}{
 		{
 			name: "av1 + opus -> mkv (webm default replaced)",
@@ -44,9 +45,45 @@ func TestGetCompatibleExt(t *testing.T) {
 			},
 			want: "mkv",
 		},
+		{
+			name: "pref mp4 forced even if incompatible",
+			in: []infodict.Format{
+				{VCodec: "av01.0.00M.08", ACodec: "none", Ext: "mp4"},
+				{VCodec: "none", ACodec: "opus", Ext: "webm"},
+			},
+			preferences: []string{"mp4"},
+			want:        "mp4",
+		},
+		{
+			name: "pref mp4/mkv skips incompatible mp4 -> mkv",
+			in: []infodict.Format{
+				{VCodec: "av01.0.00M.08", ACodec: "none", Ext: "mp4"},
+				{VCodec: "none", ACodec: "opus", Ext: "webm"},
+			},
+			preferences: []string{"mp4", "mkv"},
+			want:        "mkv",
+		},
+		{
+			name: "pref mp4/avi skips incompatible mp4 -> avi",
+			in: []infodict.Format{
+				{VCodec: "av01.0.00M.08", ACodec: "none", Ext: "mp4"},
+				{VCodec: "none", ACodec: "opus", Ext: "webm"},
+			},
+			preferences: []string{"mp4", "avi"},
+			want:        "avi",
+		},
+		{
+			name: "pref mp4/mkv with compatible codecs -> mp4 (first)",
+			in: []infodict.Format{
+				{VCodec: "avc1.4D400C", ACodec: "none", Ext: "mp4"},
+				{VCodec: "none", ACodec: "mp4a.40.2", Ext: "m4a"},
+			},
+			preferences: []string{"mp4", "mkv"},
+			want:        "mp4",
+		},
 	}
 	for _, c := range cases {
-		if got := getCompatibleExt(c.in); got != c.want {
+		if got := getCompatibleExt(c.in, c.preferences); got != c.want {
 			t.Errorf("%s: getCompatibleExt = %q, want %q", c.name, got, c.want)
 		}
 	}

@@ -21,6 +21,36 @@ func TestValidateUnsupportedRejects(t *testing.T) {
 	}
 }
 
+func TestValidateMergeOutputFormatRejects(t *testing.T) {
+	cases := [][]string{
+		{"--merge-output-format", "url/avi", "URL"},
+		{"--merge-output-format", "MP4", "URL"},
+		{"--merge-output-format", "", "URL"},
+	}
+	for _, args := range cases {
+		cmd := newRootCmd(options.DefaultOptions())
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err == nil {
+			t.Errorf("Execute(%v) = nil, want invalid merge output format error", args)
+		}
+	}
+}
+
+func TestValidateMergeOutputFormatAccepts(t *testing.T) {
+	cases := [][]string{
+		{"--merge-output-format", "mp4/mkv", "URL"},
+		{"--merge-output-format", "mp4/avi", "URL"},
+		{"--merge-output-format", "avimkv", "URL"},
+	}
+	for _, args := range cases {
+		cmd := newRootCmd(options.DefaultOptions())
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			t.Errorf("Execute(%v) = %v, want nil", args, err)
+		}
+	}
+}
+
 func TestValidateUnsupportedAcceptsImplemented(t *testing.T) {
 	cases := [][]string{
 		{"--restrict-filenames", "--ignore-errors", "--force-overwrites", "URL"},
