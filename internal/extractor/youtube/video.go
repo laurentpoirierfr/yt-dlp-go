@@ -8,6 +8,7 @@ import (
 
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/extractor"
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/jsc"
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/utils"
 )
 
@@ -187,7 +188,7 @@ func (ie *YoutubeIE) extractPlayerResponses(
 	initialPR map[string]any, webpageYTCfg map[string]any,
 ) ([]map[string]any, string, error) {
 	var prs []map[string]any
-	if initialPR != nil && validPlayerResponse(initialPR, videoID) {
+	if initialPR != nil && invalidPlayerResponse(initialPR, videoID) == "" {
 		// metadata-only copy for the initial pass
 		cp := copyMap(initialPR)
 		delete(cp, "streamingData")
@@ -196,7 +197,7 @@ func (ie *YoutubeIE) extractPlayerResponses(
 
 	playerURL := ie.playerURL
 	queue := append([]string{}, clients...)
-	skipped := map[string]string{}
+	var skipped []skippedClient
 	ie.visitorData = extractVisitorData(webpageYTCfg, initialPR)
 
 	for len(queue) > 0 {
@@ -243,8 +244,8 @@ func (ie *YoutubeIE) extractPlayerResponses(
 		if pr == nil {
 			continue
 		}
-		if !validPlayerResponse(pr, videoID) {
-			skipped[clientName] = utils.TraverseStr(pr, "videoDetails.videoId")
+		if id := invalidPlayerResponse(pr, videoID); id != "" {
+			skipped = append(skipped, skippedClient{client: clientName, id: id})
 			continue
 		}
 		// annotate streamingData with the client name
@@ -260,9 +261,12 @@ func (ie *YoutubeIE) extractPlayerResponses(
 		prs = append(prs, pr)
 
 		status := utils.TraverseStr(pr, "playabilityStatus.status")
-		// dynamic fallbacks
+		// dynamic fallbacks: a "made for kids" video that can't be downloaded
+		// with android_vr/visionos may work with web_embedded/tv_downgraded.
 		if (clientName == "android_vr" || clientName == "visionos") &&
-			(status == "UNPLAYABLE" || status == "ERROR") {
+			(status == "UNPLAYABLE" || status == "ERROR") &&
+			webpage != "" && strings.Contains(webpage, "made for kids") &&
+			jsc.Available() {
 			queue = append(queue, "web_embedded", "tv_downgraded")
 		}
 		if isAgeGated(pr) && variant != "embedded" && baseName != "" {
@@ -270,16 +274,26 @@ func (ie *YoutubeIE) extractPlayerResponses(
 		}
 	}
 	if len(skipped) > 0 {
-		var parts []string
-		for k, v := range skipped {
-			parts = append(parts, fmt.Sprintf("%s (video id: %s)", k, v))
+		var names []string
+		for _, s := range skipped {
+			names = append(names, s.client)
 		}
-		ie.ReportWarning("Skipped player clients: %s", strings.Join(parts, ", "))
-	}
-	_ = playerURL
-	if len(prs) == 0 {
-		return nil, playerURL, ie.NewExtractorError(
-			"All player responses are invalid. Your IP is likely being blocked by Youtube", true, nil)
+		var ids []string
+		seen := map[string]bool{}
+		for _, s := range skipped {
+			if !seen[s.id] {
+				seen[s.id] = true
+				ids = append(ids, s.id)
+			}
+		}
+		ie.ReportWarning("Skipping player responses from %s clients (got player responses for video \"%s\" instead of \"%s\")",
+			strings.Join(names, "/"), strings.Join(ids, "/"), videoID)
+		if len(prs) == 0 {
+			return nil, playerURL, ie.NewExtractorError(
+				"All player responses are invalid. Your IP is likely being blocked by Youtube", true, nil)
+		}
+	} else if len(prs) == 0 {
+		return nil, playerURL, ie.NewExtractorError("Failed to extract any player response", false, nil)
 	}
 	return prs, playerURL, nil
 }
@@ -308,11 +322,84 @@ func (ie *YoutubeIE) extractPlayerResponse(c *Client, videoID string, ytcfg map[
 	return ie.callAPI("player", body, c, videoID, ytcfg)
 }
 
-func validPlayerResponse(pr map[string]any, videoID string) bool {
-	if pr == nil {
-		return false
+// skippedClient records a player response whose video id did not match the
+// requested video (yt-dlp's skipped_clients dict entry).
+type skippedClient struct {
+	client string
+	id     string
+}
+
+// invalidPlayerResponse mirrors yt-dlp's _invalid_player_response: YouTube may
+// return a player response for a different video. It returns the mismatched
+// video id (possibly empty when the response carries no video id), or "" when
+// the response is acceptable. A response with no videoDetails.videoId is
+// considered valid, exactly like yt-dlp.
+func invalidPlayerResponse(pr map[string]any, videoID string) string {
+	id := utils.TraverseStr(pr, "videoDetails.videoId")
+	if id != videoID {
+		return id
 	}
-	return utils.TraverseStr(pr, "videoDetails.videoId") == videoID
+	return ""
+}
+
+// youtubeLoginHint mirrors YoutubeIE._youtube_login_hint for the cookies
+// method.
+const youtubeLoginHint = "Use --cookies-from-browser or --cookies for the authentication. See  " +
+	"https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. " +
+	"Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies"
+
+// removeEnd ports yt-dlp's utils.remove_end.
+func removeEnd(s, end string) string {
+	if end != "" && strings.HasSuffix(s, end) {
+		return s[:len(s)-len(end)]
+	}
+	return s
+}
+
+// hasLicenseInfos reports whether any player response carries licenseInfos
+// (DRM-protected streams).
+func hasLicenseInfos(prs []map[string]any) bool {
+	for _, pr := range prs {
+		sd, ok := pr["streamingData"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if len(asList(sd["licenseInfos"])) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCaptcha reports whether any playability status carries a
+// playerCaptchaViewModel.
+func hasCaptcha(statuses []map[string]any) bool {
+	for _, s := range statuses {
+		if _, ok := utils.Traverse(s, "errorScreen.playerCaptchaViewModel").(map[string]any); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// rendererText mirrors yt-dlp's InfoExtractor._get_text for a renderer object:
+// it reads simpleText or the concatenation of runs, and returns "" for a bare
+// string (unlike textOf).
+func rendererText(v any) string {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if s := utils.Str(m["simpleText"]); s != "" {
+		return s
+	}
+	var sb strings.Builder
+	for _, r := range asList(m["runs"]) {
+		if rm, ok := r.(map[string]any); ok {
+			sb.WriteString(utils.Str(rm["text"]))
+		}
+	}
+	return sb.String()
 }
 
 func isAgeGated(pr map[string]any) bool {
@@ -715,9 +802,14 @@ func (ie *YoutubeIE) noFormatsError(prs []map[string]any, microformats []map[str
 			statuses = append(statuses, ps)
 		}
 	}
+	// DRM-protected content (--allow-unplayable-formats is not supported).
+	if hasLicenseInfos(prs) {
+		return ie.RaiseNoFormats("This video is DRM protected", true)
+	}
+
 	reason := ""
 	for _, s := range statuses {
-		if r := textOf(utils.Traverse(s, "errorScreen.playerErrorMessageRenderer.reason")); r != "" {
+		if r := rendererText(utils.Traverse(s, "errorScreen.playerErrorMessageRenderer.reason")); r != "" {
 			reason = r
 			break
 		}
@@ -732,7 +824,7 @@ func (ie *YoutubeIE) noFormatsError(prs []map[string]any, microformats []map[str
 	}
 	subreason := ""
 	for _, s := range statuses {
-		if r := utils.CleanHTML(textOf(utils.Traverse(s, "errorScreen.playerErrorMessageRenderer.subreason"))); r != "" {
+		if r := utils.CleanHTML(rendererText(utils.Traverse(s, "errorScreen.playerErrorMessageRenderer.subreason"))); r != "" {
 			subreason = r
 			break
 		}
@@ -753,10 +845,22 @@ func (ie *YoutubeIE) noFormatsError(prs []map[string]any, microformats []map[str
 		}
 		reason += ". " + subreason
 	}
-	if reason == "" {
-		reason = "Requested format is not available"
+	if reason != "" {
+		switch {
+		case strings.Contains(strings.ToLower(reason), "sign in"):
+			reason = removeEnd(reason, "This helps protect our community. Learn more")
+			reason = removeEnd(strings.TrimSpace(reason), ".") + ". " + youtubeLoginHint
+		case hasCaptcha(statuses):
+			reason += ". YouTube is requiring a captcha challenge before playback"
+		case strings.Contains(reason, "This content isn't available, try again later"):
+			reason = removeEnd(strings.TrimSpace(reason), ".") + ". The current session " +
+				"has been rate-limited by YouTube for up to an hour. It is recommended to use `-t sleep` to add a delay " +
+				"between video requests to avoid exceeding the rate limit. For more information, refer to  " +
+				"https://github.com/yt-dlp/yt-dlp/wiki/Extractors#this-content-isnt-available-try-again-later"
+		}
+		return ie.RaiseNoFormats(reason, true)
 	}
-	return ie.RaiseNoFormats(reason, true)
+	return ie.RaiseNoFormats("Requested format is not available", true)
 }
 
 // ---------------------------------------------------------------------------
