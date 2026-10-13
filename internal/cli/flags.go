@@ -70,7 +70,10 @@ func newRootCmd(o *options.Options) *cobra.Command {
 			if err := validateUnsupported(cmd); err != nil {
 				return err
 			}
-			return validateConvertSubtitles(o)
+			if err := validateConvertSubtitles(o); err != nil {
+				return err
+			}
+			return validateMergeOutputFormat(cmd, o)
 		},
 	}
 
