@@ -296,10 +296,11 @@ func (y *YoutubeDL) buildSelectorFn(n *selNode) (selectorFn, error) {
 			return nil, err
 		}
 		base := func(ctx *selectContext) []infodict.Format {
+			prefs := y.mergePreferences()
 			var out []infodict.Format
 			for _, f1 := range s1(ctx) {
 				for _, f2 := range s2(ctx) {
-					out = append(out, mergeFormats(f1, f2))
+					out = append(out, mergeFormats(f1, f2, prefs))
 				}
 			}
 			return out
@@ -877,7 +878,7 @@ func floatPtrAttr(p *float64) (any, bool) {
 // Merge
 // ---------------------------------------------------------------------------
 
-func mergeFormats(f1, f2 infodict.Format) infodict.Format {
+func mergeFormats(f1, f2 infodict.Format, preferences []string) infodict.Format {
 	formats := []infodict.Format{}
 	if len(f1.RequestedFormats) > 0 {
 		formats = append(formats, f1.RequestedFormats...)
@@ -920,7 +921,7 @@ func mergeFormats(f1, f2 infodict.Format) infodict.Format {
 		RequestedFormats: formats,
 		FormatID:         strings.Join(ids, "+"),
 		Format:           joinFormatStrings(formats, ids),
-		Ext:              getCompatibleExt(formats),
+		Ext:              getCompatibleExt(formats, preferences),
 		TBR:              tbr,
 		FilesizeApprox:   sizeApprox,
 	}
@@ -979,11 +980,21 @@ func dedupe(in []string) []string {
 	return out
 }
 
+// mergePreferences returns the --merge-output-format containers as a list, or
+// nil when unset (which preserves the project's default mkv behaviour).
+func (y *YoutubeDL) mergePreferences() []string {
+	s := strings.TrimSpace(y.opts.MergeOutputFormat)
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "/")
+}
+
 // getCompatibleExt picks the container extension for a merged format,
-// mirroring yt-dlp's utils.get_compatible_ext, except that the 'webm'
-// default is replaced by 'mkv' (this project's product default: merged
-// video output uses mkv rather than webm).
-func getCompatibleExt(formats []infodict.Format) string {
+// mirroring yt-dlp's utils.get_compatible_ext. When preferences is empty the
+// project default applies and the 'webm' default is replaced by 'mkv'; when
+// preferences is set the containers are returned verbatim.
+func getCompatibleExt(formats []infodict.Format, preferences []string) string {
 	var vexts, aexts, vcodecs, acodecs []string
 	for _, f := range formats {
 		if hasVideo(f) {
@@ -995,23 +1006,19 @@ func getCompatibleExt(formats []infodict.Format) string {
 			acodecs = append(acodecs, f.ACodec)
 		}
 	}
+	if len(preferences) > 0 {
+		return preferredCompatibleExt(preferences, vexts, aexts, vcodecs, acodecs)
+	}
 
 	if maxInt(len(acodecs), len(vcodecs)) > 1 {
 		return "mkv"
 	}
 
-	compatibleCodecs := []struct {
-		ext    string
-		codecs []string
-	}{
-		{"mp4", []string{"av1", "hevc", "avc1", "mp4a", "ac-4", "h264", "aacl", "ec-3"}},
-		{"webm", []string{"av1", "vp9", "vp8", "opus", "vrbs", "vp9x", "vp8x"}},
-	}
 	vcodec := sanitizeCodec(vcodecs)
 	acodec := sanitizeCodec(acodecs)
-	for _, c := range compatibleCodecs {
-		if containsStr(c.codecs, vcodec) && containsStr(c.codecs, acodec) {
-			return mergedContainer(c.ext)
+	for _, c := range compatibleCodecOrder {
+		if containsStr(compatibleCodecs[c], vcodec) && containsStr(compatibleCodecs[c], acodec) {
+			return mergedContainer(c)
 		}
 	}
 
@@ -1037,6 +1044,74 @@ func getCompatibleExt(formats []infodict.Format) string {
 		}
 	}
 	return "mkv"
+}
+
+// compatibleCodecs reproduces yt-dlp's COMPATIBLE_CODECS table.
+var compatibleCodecs = map[string][]string{
+	"mp4":  {"av1", "hevc", "avc1", "mp4a", "ac-4", "h264", "aacl", "ec-3"},
+	"webm": {"av1", "vp9", "vp8", "opus", "vrbs", "vp9x", "vp8x"},
+}
+
+// compatibleCodecOrder is the iteration order of COMPATIBLE_CODECS (insertion
+// order in yt-dlp: mp4 then webm).
+var compatibleCodecOrder = []string{"mp4", "webm"}
+
+// preferredCompatibleExt ports yt-dlp's get_compatible_ext when an explicit
+// --merge-output-format preference list is given. Unlike the default path it
+// returns the containers verbatim (no mkv remapping).
+func preferredCompatibleExt(preferences, vexts, aexts, vcodecs, acodecs []string) string {
+	allowMkv := false
+	for _, p := range preferences {
+		if p == "mkv" {
+			allowMkv = true
+			break
+		}
+	}
+	if allowMkv && maxInt(len(acodecs), len(vcodecs)) > 1 {
+		return "mkv"
+	}
+
+	vcodec := sanitizeCodec(vcodecs)
+	acodec := sanitizeCodec(acodecs)
+	for _, ext := range preferences {
+		if ext == "mkv" {
+			return ext
+		}
+		if codecs, ok := compatibleCodecs[ext]; ok && containsStr(codecs, vcodec) && containsStr(codecs, acodec) {
+			return ext
+		}
+	}
+
+	compatibleExtSets := [][]string{
+		{"mp3", "mp4", "m4a", "m4p", "m4b", "m4r", "m4v", "ismv", "isma", "mov"},
+		{"webm", "weba"},
+	}
+	for _, ext := range preferences {
+		current := map[string]bool{ext: true}
+		for _, e := range vexts {
+			current[e] = true
+		}
+		for _, e := range aexts {
+			current[e] = true
+		}
+		if ext == "mkv" || len(current) == 1 || anySuperset(compatibleExtSets, current) {
+			return ext
+		}
+	}
+
+	if allowMkv {
+		return "mkv"
+	}
+	return preferences[len(preferences)-1]
+}
+
+func anySuperset(sets [][]string, subset map[string]bool) bool {
+	for _, set := range sets {
+		if isSuperset(set, subset) {
+			return true
+		}
+	}
+	return false
 }
 
 // mergedContainer maps the yt-dlp-compatible container to this project's
