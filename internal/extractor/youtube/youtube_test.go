@@ -64,11 +64,26 @@ func TestSuitable(t *testing.T) {
 		"https://www.youtube.com/playlist?list=PL123",
 		"https://www.youtube.com/watch?v=h87gs1mcxSc&list=RDh87gs1mcxSc&index=1",
 		"https://example.com/watch?v=dQw4w9WgXcQ",
+		// A naked ID must be exactly 11 characters (Python's (?(1).+)? only
+		// allows trailing content when the URL prefix matched).
+		"not-a-domain",
+		"abcdefghijkl",
+		"abcdefghijkX",
+		"abcdefghijk extra",
 	}
 	for _, u := range noMatch {
 		if ie.Suitable(u) {
 			t.Errorf("should not match: %s", u)
 		}
+	}
+	bare := []string{"jNQXAC9IVRw", "dQw4w9WgXcQ", "dQw4w9WgXcQ#foo"}
+	for _, u := range bare {
+		if !ie.Suitable(u) {
+			t.Errorf("should match naked id: %s", u)
+		}
+	}
+	if id := ie.MatchID("jNQXAC9IVRw"); id != "jNQXAC9IVRw" {
+		t.Errorf("MatchID(bare) = %q", id)
 	}
 	if id := ie.MatchID("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1"); id != "dQw4w9WgXcQ" {
 		t.Errorf("MatchID = %q", id)
