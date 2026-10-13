@@ -53,7 +53,8 @@ type Model struct {
 	failed   int
 	done     bool
 	err      error
-	focusLog bool
+	focusLog   bool
+	selected   int // index in jobs (most recent shown order? or absolute)
 
 	started time.Time
 }
@@ -156,10 +157,22 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.focusLog = !m.focusLog
 		return m, nil
 	case "up", "k":
-		m.vp.LineUp(1)
+		if m.focusLog {
+			m.vp.LineUp(1)
+		} else {
+			if m.selected > 0 {
+				m.selected--
+			}
+		}
 		return m, nil
 	case "down", "j":
-		m.vp.LineDown(1)
+		if m.focusLog {
+			m.vp.LineDown(1)
+		} else {
+			if m.selected < len(m.jobs)-1 {
+				m.selected++
+			}
+		}
 		return m, nil
 	case "pgup":
 		m.vp.HalfViewUp()
@@ -168,10 +181,18 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.vp.HalfViewDown()
 		return m, nil
 	case "g":
-		m.vp.GotoTop()
+		if m.focusLog {
+			m.vp.GotoTop()
+		} else if len(m.jobs) > 0 {
+			m.selected = 0
+		}
 		return m, nil
 	case "G":
-		m.vp.GotoBottom()
+		if m.focusLog {
+			m.vp.GotoBottom()
+		} else if len(m.jobs) > 0 {
+			m.selected = len(m.jobs) - 1
+		}
 		return m, nil
 	}
 	return m, nil
