@@ -58,12 +58,18 @@ type Model struct {
 	logs []string
 	vp   viewport.Model
 
-	finished int
-	failed   int
-	done     bool
-	err      error
-	focusLog bool
-	selected int // index in jobs (most recent shown order? or absolute)
+	finished  int
+	failed    int
+	done      bool
+	err       error
+	focusLog  bool
+	selected  int // index in jobs (most recent shown order? or absolute)
+	showHelp  bool
+	filtering bool
+	filterBuf string
+	filter    string
+
+	speeds []float64
 
 	started time.Time
 }
@@ -162,9 +168,36 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.filtering {
+		return m.handleFilterKey(msg)
+	}
+	if m.showHelp {
+		switch msg.String() {
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		case "?", "esc":
+			m.showHelp = false
+		}
+		return m, nil
+	}
 	switch msg.String() {
-	case "q", "ctrl+c", "esc":
+	case "q", "ctrl+c":
 		return m, tea.Quit
+	case "esc":
+		if m.filter != "" {
+			m.filter = ""
+			m.filterBuf = ""
+			m.refreshLogs()
+			return m, nil
+		}
+		return m, tea.Quit
+	case "?":
+		m.showHelp = true
+		return m, nil
+	case "/":
+		m.filtering = true
+		m.filterBuf = m.filter
+		return m, nil
 	case "tab":
 		m.focusLog = !m.focusLog
 		return m, nil
@@ -206,6 +239,42 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.selected = len(m.jobs) - 1
 		}
 		return m, nil
+	}
+	return m, nil
+}
+
+// handleFilterKey edits the log filter while "/" input mode is active.
+func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyCtrlC:
+		return m, tea.Quit
+	case tea.KeyEsc:
+		m.filtering = false
+		m.filterBuf = ""
+		m.filter = ""
+		m.refreshLogs()
+	case tea.KeyEnter:
+		m.filtering = false
+		m.filter = m.filterBuf
+		m.refreshLogs()
+	case tea.KeyBackspace:
+		if r := []rune(m.filterBuf); len(r) > 0 {
+			m.filterBuf = string(r[:len(r)-1])
+		}
+		m.filter = m.filterBuf
+		m.refreshLogs()
+	case tea.KeyCtrlU:
+		m.filterBuf = ""
+		m.filter = ""
+		m.refreshLogs()
+	case tea.KeyRunes:
+		m.filterBuf += string(msg.Runes)
+		m.filter = m.filterBuf
+		m.refreshLogs()
+	case tea.KeySpace:
+		m.filterBuf += " "
+		m.filter = m.filterBuf
+		m.refreshLogs()
 	}
 	return m, nil
 }
@@ -270,6 +339,22 @@ func (m *Model) applyProgress(p events.Progress) {
 			m.appendLogStyle(errStyle, fmt.Sprintf("Failed: %s: %v", j.title, p.Err))
 		}
 	}
+	m.recordSpeed()
+}
+
+// recordSpeed appends the current aggregate speed to the sparkline history.
+func (m *Model) recordSpeed() {
+	var speed float64
+	for _, j := range m.jobs {
+		if j.status == events.StatusRunning {
+			speed += j.speed
+		}
+	}
+	m.speeds = append(m.speeds, speed)
+	const maxSamples = 60
+	if len(m.speeds) > maxSamples {
+		m.speeds = m.speeds[len(m.speeds)-maxSamples:]
+	}
 }
 
 func (m *Model) jobTitle(p events.Progress) string {
@@ -313,7 +398,22 @@ func (m *Model) appendLogStyle(style lipgloss.Style, text string) {
 	if len(m.logs) > maxLogs {
 		m.logs = m.logs[len(m.logs)-maxLogs:]
 	}
-	m.vp.SetContent(strings.Join(m.logs, "\n"))
+	m.refreshLogs()
+}
+
+// refreshLogs rebuilds the viewport content, applying the active filter.
+func (m *Model) refreshLogs() {
+	lines := m.logs
+	if m.filter != "" {
+		q := strings.ToLower(m.filter)
+		lines = make([]string, 0, len(m.logs))
+		for _, line := range m.logs {
+			if strings.Contains(strings.ToLower(line), q) {
+				lines = append(lines, line)
+			}
+		}
+	}
+	m.vp.SetContent(strings.Join(lines, "\n"))
 	m.vp.GotoBottom()
 }
 
@@ -408,10 +508,14 @@ func (m *Model) viewHeader() []string {
 		status += " · done"
 	}
 
+	leftW := m.width - logoWidth() - 2
+	if leftW < 10 {
+		leftW = 10
+	}
 	left := []string{
-		titleStyle.Render(" yt-dlp-go "),
-		dimStyle.Render(" " + status),
-		dimStyle.Render(" " + m.aggregate()),
+		titleStyle.Render(truncateRunes(" yt-dlp-go ", leftW)),
+		dimStyle.Render(truncateRunes(" "+status, leftW)),
+		dimStyle.Render(truncateRunes(" "+m.aggregate(), leftW)),
 	}
 	for len(left) < m.headerHeight() {
 		left = append(left, "")
@@ -421,14 +525,8 @@ func (m *Model) viewHeader() []string {
 		return left[:m.headerHeight()]
 	}
 
-	leftW := m.width - logoWidth() - 2
-	if leftW < 10 {
-		leftW = 10
-	}
 	leftBlock := lipgloss.NewStyle().Width(leftW).Render(strings.Join(left, "\n"))
-	logoBlock := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("205")).
-		Render(strings.Join(logoLines(), "\n"))
+	logoBlock := logoStyle.Render(strings.Join(logoLines(), "\n"))
 	header := lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, "  ", logoBlock)
 	return strings.Split(header, "\n")
 }
@@ -445,11 +543,49 @@ func (m *Model) aggregate() string {
 	parts := []string{utils.FormatBytes(downloaded) + " total"}
 	if speed > 0 {
 		parts = append(parts, utils.FormatBytes(int64(speed))+"/s")
+		if spark := sparkline(m.speeds, 16); spark != "" {
+			parts = append(parts, spark)
+		}
 	}
 	if !m.started.IsZero() {
 		parts = append(parts, "elapsed "+utils.FormatClock(time.Since(m.started)))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// sparkline renders the last width speed samples as Unicode blocks.
+func sparkline(values []float64, width int) string {
+	if len(values) == 0 || width <= 0 {
+		return ""
+	}
+	if len(values) > width {
+		values = values[len(values)-width:]
+	}
+	maxV := 0.0
+	for _, v := range values {
+		if v > maxV {
+			maxV = v
+		}
+	}
+	if maxV <= 0 {
+		return ""
+	}
+	blocks := []rune("▁▂▃▄▅▆▇█")
+	var b strings.Builder
+	for _, v := range values {
+		if v < 0 {
+			v = 0
+		}
+		idx := int(v / maxV * float64(len(blocks)-1))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(blocks) {
+			idx = len(blocks) - 1
+		}
+		b.WriteRune(blocks[idx])
+	}
+	return b.String()
 }
 
 func (m *Model) viewJobs() []string {
@@ -558,6 +694,9 @@ func (m *Model) showDetail() bool {
 // pane next to the logs when the terminal is wide enough.
 func (m *Model) viewBody() []string {
 	h := m.logsHeightActual()
+	if m.showHelp {
+		return m.viewHelp(m.width-2, h)
+	}
 	if m.done {
 		return m.viewDone(h)
 	}
@@ -694,6 +833,9 @@ func (m *Model) viewLogs(w, h int) []string {
 	m.vp.Width = w
 	m.vp.Height = h - 1
 	labelText := " Logs "
+	if m.filter != "" {
+		labelText = " Logs · " + truncateRunes(m.filter, 24) + " "
+	}
 	label := dimStyle.Render(labelText)
 	if m.focusLog {
 		label = focusedStyle.Render(labelText)
@@ -874,12 +1016,54 @@ func truncateRunes(s string, n int) string {
 }
 
 func (m *Model) viewFooter() []string {
-	help := " q quit · ↑↓ select · tab logs · j/k scroll · g/G top/bottom"
-	if m.done {
-		help = " q quit · final summary · ↑↓ select · tab logs · j/k scroll"
+	if m.filtering {
+		return []string{
+			footerStyle.Render(" / " + m.filterBuf + "▏"),
+			footerStyle.Render(" entrée appliquer · esc effacer · ctrl+u vider"),
+		}
+	}
+	help := " q quit · ↑↓ select · tab logs · / filter · ? help"
+	if m.showHelp {
+		help = " ? close help · q quit"
+	} else if m.done {
+		help = " q quit · final summary · ↑↓ select · tab logs · / filter"
 	}
 	return []string{
 		footerStyle.Render(help),
 		footerStyle.Render(fmt.Sprintf(" %d finished · %d failed", m.finished, m.failed)),
 	}
+}
+
+// viewHelp renders the key binding reference.
+func (m *Model) viewHelp(w, h int) []string {
+	lines := []string{dimStyle.Render(" Aide ")}
+	add := func(text string) {
+		if len(lines) < h {
+			lines = append(lines, truncateRunes(text, w))
+		}
+	}
+	add(titleStyle.Render(" Navigation"))
+	add("  ↑ ↓ / k j   sélectionner une tâche")
+	add("  tab         journaux / tâches")
+	add("  g / G       début / fin")
+	add("")
+	add(titleStyle.Render(" Journaux"))
+	add("  j / k       faire défiler")
+	add("  /           filtrer")
+	add("  esc         effacer le filtre")
+	add("")
+	add(titleStyle.Render(" Affichage"))
+	add("  ?           fermer l'aide")
+	add("  q           quitter")
+	add("")
+	add(titleStyle.Render(" Thèmes"))
+	add("  --theme     default, dracula, solarized, mono")
+	add("  NO_COLOR=1  désactive les couleurs")
+	for len(lines) < h {
+		lines = append(lines, "")
+	}
+	if len(lines) > h {
+		lines = lines[:h]
+	}
+	return lines
 }

@@ -162,6 +162,7 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 		fmt.Fprintln(os.Stderr, "WARNING: --tui requested but no terminal is available; using plain output")
 	}
 	if tuiEnabled(opts, simulate, available) {
+		tui.SetTheme(opts.Theme)
 		err := tui.Run(func(sink events.Sink) error {
 			ydl.SetSink(sink)
 			if code := process(); code != 0 {

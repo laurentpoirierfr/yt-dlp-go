@@ -277,3 +277,117 @@ func TestFinalSummaryNarrow(t *testing.T) {
 		t.Fatalf("view has %d lines, want 24", got)
 	}
 }
+
+func runeKey(s string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+}
+
+func TestLogFilter(t *testing.T) {
+	m := New()
+	sized(m, 120, 40)
+	m.Update(logMsg(events.Log{Level: events.LevelInfo, Text: "info alpha"}))
+	m.Update(logMsg(events.Log{Level: events.LevelError, Text: "error beta"}))
+	m.Update(logMsg(events.Log{Level: events.LevelWarning, Text: "warning gamma"}))
+
+	// "/" enters filter mode; typed text filters live.
+	m.Update(runeKey("/"))
+	if !m.filtering {
+		t.Fatal("expected filter input mode")
+	}
+	m.Update(runeKey("err"))
+	if got := m.vp.View(); !strings.Contains(got, "error beta") ||
+		strings.Contains(got, "info alpha") || strings.Contains(got, "warning gamma") {
+		t.Fatalf("live filter mismatch:\n%s", got)
+	}
+
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.filtering || m.filter != "err" {
+		t.Fatalf("filter = %q filtering = %v, want %q", m.filter, m.filtering, "err")
+	}
+	if view := m.View(); !strings.Contains(view, "Logs · err") {
+		t.Fatalf("filter indicator missing:\n%s", view)
+	}
+
+	// Esc clears an applied filter without quitting.
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.filter != "" {
+		t.Fatalf("filter = %q, want cleared", m.filter)
+	}
+	if got := m.vp.View(); !strings.Contains(got, "info alpha") {
+		t.Fatalf("logs not restored after clearing the filter:\n%s", got)
+	}
+}
+
+func TestHelpToggle(t *testing.T) {
+	m := New()
+	sized(m, 120, 40)
+	m.Update(runeKey("?"))
+	if !m.showHelp {
+		t.Fatal("expected help to open")
+	}
+	view := m.View()
+	if !strings.Contains(view, "Aide") || !strings.Contains(view, "filtrer") {
+		t.Fatalf("help content missing:\n%s", view)
+	}
+	if got := strings.Count(view, "\n") + 1; got != 40 {
+		t.Fatalf("help view has %d lines, want 40", got)
+	}
+	m.Update(runeKey("?"))
+	if m.showHelp {
+		t.Fatal("expected help to close")
+	}
+	if strings.Contains(m.View(), " Navigation") {
+		t.Fatal("help still rendered")
+	}
+}
+
+func TestSparkline(t *testing.T) {
+	if got, want := sparkline([]float64{0, 1, 2, 3}, 4), "▁▃▅█"; got != want {
+		t.Fatalf("sparkline = %q, want %q", got, want)
+	}
+	// Only the last `width` samples are shown.
+	if got, want := sparkline([]float64{1, 2, 3}, 2), "▅█"; got != want {
+		t.Fatalf("truncated sparkline = %q, want %q", got, want)
+	}
+	if got := sparkline(nil, 10); got != "" {
+		t.Fatalf("empty sparkline = %q, want empty", got)
+	}
+	if got := sparkline([]float64{0, 0}, 10); got != "" {
+		t.Fatalf("zero sparkline = %q, want empty", got)
+	}
+}
+
+func TestSpeedHistoryRecorded(t *testing.T) {
+	m := New()
+	sized(m, 120, 40)
+	addJob(m, "a", "Vidéo", "137")
+	if len(m.speeds) == 0 {
+		t.Fatal("speed history should be recorded on progress")
+	}
+	if got := m.speeds[len(m.speeds)-1]; got != 1024 {
+		t.Fatalf("last speed = %v, want 1024", got)
+	}
+}
+
+func TestSetTheme(t *testing.T) {
+	defer SetTheme("default")
+	SetTheme("dracula")
+	if got, want := titleStyle.GetForeground(), lipgloss.Color("141"); got != want {
+		t.Fatalf("dracula title = %v, want %v", got, want)
+	}
+	SetTheme("unknown")
+	if got, want := titleStyle.GetForeground(), lipgloss.Color("205"); got != want {
+		t.Fatalf("unknown theme should fall back to default, got %v", got)
+	}
+}
+
+func TestNoColorDetection(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	if noColor() {
+		t.Fatal("empty NO_COLOR should not disable color")
+	}
+	t.Setenv("NO_COLOR", "1")
+	if !noColor() {
+		t.Fatal("NO_COLOR=1 should disable color")
+	}
+}
