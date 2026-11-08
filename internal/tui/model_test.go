@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -104,5 +105,77 @@ func TestLogMessagesRendered(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}
+	}
+}
+
+func addJob(m *Model, id, title, format string) {
+	info := &infodict.InfoDict{
+		ID: id, Title: title, Format: format, Ext: "mp4",
+		Width: 1920, Height: 1080, DurationString: "1:00",
+	}
+	m.Update(progressMsg(events.Progress{
+		Info: info, Filename: id + ".mp4", Status: events.StatusRunning,
+		Downloaded: 500, Total: 1000, Speed: 1024, ETA: 5 * time.Second,
+	}))
+}
+
+func TestDetailPaneRendersSelectedJob(t *testing.T) {
+	m := New()
+	sized(m, 120, 40)
+	addJob(m, "a", "Première vidéo", "137 - 1080p")
+	addJob(m, "b", "Deuxième vidéo", "248 - 1080p")
+
+	// By default the first job is selected.
+	if m.selected != 0 {
+		t.Fatalf("selected = %d, want 0", m.selected)
+	}
+	if !m.showDetail() {
+		t.Fatal("detail pane should be shown on a wide terminal")
+	}
+	view := m.View()
+	if !strings.Contains(view, "Détail") {
+		t.Fatalf("detail label missing:\n%s", view)
+	}
+	if !strings.Contains(view, "Première vidéo") {
+		t.Fatalf("selected title missing:\n%s", view)
+	}
+
+	// Move selection down: detail must follow.
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.selected != 1 {
+		t.Fatalf("selected = %d, want 1", m.selected)
+	}
+	view = m.View()
+	if !strings.Contains(view, "Format") || !strings.Contains(view, "248 - 1080p") {
+		t.Fatalf("second job details missing:\n%s", view)
+	}
+}
+
+func TestDetailPaneHiddenNarrow(t *testing.T) {
+	m := New()
+	sized(m, 60, 30)
+	addJob(m, "a", "Vidéo", "137")
+	if m.showDetail() {
+		t.Fatal("detail pane should be hidden on a narrow terminal")
+	}
+	if strings.Contains(m.View(), "Détail") {
+		t.Fatalf("detail pane should not be rendered:\n%s", m.View())
+	}
+}
+
+func TestSelectionClamped(t *testing.T) {
+	m := New()
+	sized(m, 120, 40)
+	addJob(m, "a", "A", "137")
+	addJob(m, "b", "B", "248")
+	addJob(m, "c", "C", "313")
+	for i := 0; i < 10; i++ {
+		m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	if m.selected != 2 {
+		t.Fatalf("selected = %d, want 2", m.selected)
+	}
+	if got := m.selectedJob(); got == nil || got.key != "c" {
+		t.Fatalf("selectedJob = %v, want job c", got)
 	}
 }
