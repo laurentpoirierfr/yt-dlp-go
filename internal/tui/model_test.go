@@ -124,9 +124,8 @@ func TestDetailPaneRendersSelectedJob(t *testing.T) {
 	m := New()
 	sized(m, 120, 40)
 	addJob(m, "a", "Première vidéo", "137 - 1080p")
-	addJob(m, "b", "Deuxième vidéo", "248 - 1080p")
 
-	// By default the first job is selected.
+	// The first job is selected when it is the only one.
 	if m.selected != 0 {
 		t.Fatalf("selected = %d, want 0", m.selected)
 	}
@@ -141,14 +140,76 @@ func TestDetailPaneRendersSelectedJob(t *testing.T) {
 		t.Fatalf("selected title missing:\n%s", view)
 	}
 
-	// Move selection down: detail must follow.
-	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// A new job takes over the detail pane.
+	addJob(m, "b", "Deuxième vidéo", "248 - 1080p")
 	if m.selected != 1 {
 		t.Fatalf("selected = %d, want 1", m.selected)
 	}
 	view = m.View()
 	if !strings.Contains(view, "Format") || !strings.Contains(view, "248 - 1080p") {
 		t.Fatalf("second job details missing:\n%s", view)
+	}
+
+	// Move selection up: detail must follow.
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.selected != 0 {
+		t.Fatalf("selected = %d, want 0", m.selected)
+	}
+	view = m.View()
+	if !strings.Contains(view, "137 - 1080p") {
+		t.Fatalf("first job details missing after moving up:\n%s", view)
+	}
+}
+
+func TestPlaylistDetailFollowsNewJobs(t *testing.T) {
+	m := New()
+	sized(m, 120, 40)
+
+	addJob(m, "a", "Vidéo A", "137 - 1080p")
+	if m.selected != 0 {
+		t.Fatalf("selected = %d, want 0", m.selected)
+	}
+
+	// A playlist starts one download after the other: each new job must take
+	// over the detail pane while the last job is selected.
+	addJob(m, "b", "Vidéo B", "248 - 720p")
+	if m.selected != 1 {
+		t.Fatalf("selected = %d, want 1 after second job", m.selected)
+	}
+	if view := m.View(); !strings.Contains(view, "248 - 720p") {
+		t.Fatalf("detail pane did not follow second job:\n%s", view)
+	}
+
+	addJob(m, "c", "Vidéo C", "313 - 2160p")
+	if m.selected != 2 {
+		t.Fatalf("selected = %d, want 2 after third job", m.selected)
+	}
+
+	// Navigating to an earlier job pauses the follow so the user can inspect
+	// it without being moved away by the next playlist entry.
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.selected != 1 {
+		t.Fatalf("selected = %d, want 1 after up", m.selected)
+	}
+	addJob(m, "d", "Vidéo D", "401 - 1440p")
+	if m.selected != 1 {
+		t.Fatalf("selected = %d, want 1 (follow paused)", m.selected)
+	}
+	if view := m.View(); !strings.Contains(view, "248 - 720p") {
+		t.Fatalf("detail pane should stay on the inspected job:\n%s", view)
+	}
+
+	// G goes back to the end and resumes following new jobs.
+	m.Update(runeKey("G"))
+	if m.selected != 3 {
+		t.Fatalf("selected = %d, want 3 after G", m.selected)
+	}
+	addJob(m, "e", "Vidéo E", "18 - 360p")
+	if m.selected != 4 {
+		t.Fatalf("selected = %d, want 4 (follow resumed)", m.selected)
+	}
+	if view := m.View(); !strings.Contains(view, "18 - 360p") {
+		t.Fatalf("detail pane did not follow after G:\n%s", view)
 	}
 }
 

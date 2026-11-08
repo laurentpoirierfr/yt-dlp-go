@@ -64,7 +64,7 @@ type Model struct {
 	done      bool
 	err       error
 	focusLog  bool
-	selected  int // index in jobs (most recent shown order? or absolute)
+	selected  int // index in jobs; follows new jobs while the last one is selected
 	showHelp  bool
 	filtering bool
 	filterBuf string
@@ -290,6 +290,11 @@ func (m *Model) applyProgress(p events.Progress) {
 	}
 	j, ok := m.jobByKey(key)
 	if !ok {
+		// Follow a playlist as it progresses: when the last job is selected
+		// (the default), a newly started download takes over the detail pane.
+		// Navigating to an earlier job stops the follow until the user goes
+		// back to the end with G.
+		follow := len(m.jobs) == 0 || m.selected == len(m.jobs)-1
 		j = &job{
 			key:   key,
 			title: m.jobTitle(p),
@@ -300,6 +305,9 @@ func (m *Model) applyProgress(p events.Progress) {
 		}
 		m.jobIndex[key] = len(m.jobs)
 		m.jobs = append(m.jobs, j)
+		if follow {
+			m.selected = len(m.jobs) - 1
+		}
 	}
 	j.downloaded = p.Downloaded
 	j.total = p.Total
@@ -1048,7 +1056,7 @@ func (m *Model) viewHelp(w, h int) []string {
 	add(titleStyle.Render(" Navigation"))
 	add("  ↑ ↓ / k j   sélectionner une tâche")
 	add("  tab         journaux / tâches")
-	add("  g / G       début / fin")
+	add("  g / G       début / fin (G relance le suivi)")
 	add("")
 	add(titleStyle.Render(" Journaux"))
 	add("  j / k       faire défiler")

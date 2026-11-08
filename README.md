@@ -170,7 +170,10 @@ hauteur du terminal et se compose de :
   post-traitement (fusion, conversion audio, sous-titres).
 - **Détail** : sur un terminal assez large (≥ 88×18), la tâche sélectionnée est
   détaillée à côté du journal : titre, format, résolution, durée, taille,
-  progression, débit, ETA, étape et fichier de sortie.
+  progression, débit, ETA, étape et fichier de sortie. La sélection suit
+  automatiquement la nouvelle vidéo d'une playlist tant que la dernière tâche
+  est sélectionnée ; remonter dans la liste met le suivi en pause, `G` le
+  réactive.
 - **Journal** : logs d'extraction et de post-traitement, défilables et
   filtrables avec `/`.
 - **Bilan** : à la fin, un récapitulatif persistant (résultat, tâches réussies,
@@ -219,8 +222,8 @@ Règles d'activation :
 | `/` | Filtrer le journal (`entrée` applique, `esc` efface) |
 | `?` | Afficher / fermer l'aide |
 
-L'interface se ferme automatiquement peu après la fin du dernier
-téléchargement, avec un court délai pour lire le résultat.
+L'interface reste affichée après la fin des téléchargements pour laisser le
+temps de lire le bilan ; quittez avec `q` (ou `ctrl+c`).
 
 ### Architecture
 
