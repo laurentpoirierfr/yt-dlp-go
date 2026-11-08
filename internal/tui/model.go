@@ -152,9 +152,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.appendLogStyle(errStyle, "ERROR: "+msg.err.Error())
 		}
-		return m, tea.Tick(1500*time.Millisecond, func(time.Time) tea.Msg {
-			return tea.Quit()
-		})
+		// Keep the final summary on screen until the user quits.
+		return m, nil
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -559,16 +558,13 @@ func (m *Model) showDetail() bool {
 // pane next to the logs when the terminal is wide enough.
 func (m *Model) viewBody() []string {
 	h := m.logsHeightActual()
+	if m.done {
+		return m.viewDone(h)
+	}
 	if !m.showDetail() {
 		return m.viewLogs(m.width-2, h)
 	}
-	detailW := m.width * 2 / 5
-	if detailW < 28 {
-		detailW = 28
-	}
-	if detailW > 48 {
-		detailW = 48
-	}
+	detailW := m.detailWidth()
 	sep := " │ "
 	logW := m.width - detailW - len([]rune(sep))
 	if logW < 20 {
@@ -576,17 +572,120 @@ func (m *Model) viewBody() []string {
 	}
 	details := m.viewDetails(detailW, h)
 	logs := m.viewLogs(logW, h)
+	return joinPanes(details, logs, detailW, sep, h)
+}
+
+// detailWidth is the width reserved for the side pane.
+func (m *Model) detailWidth() int {
+	w := m.width * 2 / 5
+	if w < 28 {
+		w = 28
+	}
+	if w > 48 {
+		w = 48
+	}
+	return w
+}
+
+// viewDone renders the final summary once work has finished. On wide
+// terminals it sits next to the logs; otherwise it uses the full width.
+func (m *Model) viewDone(h int) []string {
+	if !m.showDetail() {
+		return m.viewSummary(m.width-2, h)
+	}
+	summaryW := m.detailWidth()
+	sep := " │ "
+	logW := m.width - summaryW - len([]rune(sep))
+	if logW < 20 {
+		return m.viewSummary(m.width-2, h)
+	}
+	return joinPanes(m.viewSummary(summaryW, h), m.viewLogs(logW, h), summaryW, sep, h)
+}
+
+func joinPanes(left, right []string, leftW int, sep string, h int) []string {
 	sepStr := dimStyle.Render(sep)
 	lines := make([]string, 0, h)
 	for i := 0; i < h; i++ {
-		var d, l string
-		if i < len(details) {
-			d = details[i]
+		var l, r string
+		if i < len(left) {
+			l = left[i]
 		}
-		if i < len(logs) {
-			l = logs[i]
+		if i < len(right) {
+			r = right[i]
 		}
-		lines = append(lines, lipgloss.NewStyle().Width(detailW).Render(d)+sepStr+l)
+		lines = append(lines, lipgloss.NewStyle().Width(leftW).Render(l)+sepStr+r)
+	}
+	return lines
+}
+
+func (m *Model) viewSummary(w, h int) []string {
+	lines := []string{dimStyle.Render(" Bilan ")}
+	add := func(key, val string) {
+		if len(lines) < h {
+			lines = append(lines, m.detailLine(w, key, val))
+		}
+	}
+
+	var downloaded int64
+	for _, j := range m.jobs {
+		downloaded += j.downloaded
+	}
+	result := "terminé"
+	if m.err != nil {
+		result = "arrêté sur erreur"
+	} else if m.failed > 0 {
+		result = "terminé avec erreurs"
+	}
+	add("Résultat", result)
+	add("Tâches", fmt.Sprintf("%d/%d réussies", m.finished, len(m.jobs)))
+	if m.failed > 0 {
+		add("Échecs", fmt.Sprintf("%d", m.failed))
+	}
+	add("Téléchargé", utils.FormatBytes(downloaded))
+	add("Durée", utils.FormatClock(time.Since(m.started)))
+
+	if m.failed > 0 && len(lines) < h {
+		lines = append(lines, "")
+		if len(lines) < h {
+			lines = append(lines, dimStyle.Render(" Échecs :"))
+		}
+		for _, j := range m.jobs {
+			if len(lines) >= h {
+				break
+			}
+			if j.status != events.StatusError {
+				continue
+			}
+			msg := j.title
+			if j.err != nil {
+				msg += " — " + j.err.Error()
+			}
+			lines = append(lines, errStyle.Render("  "+truncateRunes(msg, w-2)))
+		}
+	}
+
+	var files []string
+	for _, j := range m.jobs {
+		if j.status == events.StatusFinished && j.filename != "" {
+			files = append(files, j.filename)
+		}
+	}
+	if len(files) > 0 && len(lines)+1 < h {
+		lines = append(lines, "")
+		lines = append(lines, dimStyle.Render(" Fichiers :"))
+		for _, f := range files {
+			if len(lines) >= h {
+				break
+			}
+			lines = append(lines, "  "+truncateRunes(f, w-2))
+		}
+	}
+
+	for len(lines) < h {
+		lines = append(lines, "")
+	}
+	if len(lines) > h {
+		lines = lines[:h]
 	}
 	return lines
 }
@@ -776,6 +875,9 @@ func truncateRunes(s string, n int) string {
 
 func (m *Model) viewFooter() []string {
 	help := " q quit · ↑↓ select · tab logs · j/k scroll · g/G top/bottom"
+	if m.done {
+		help = " q quit · final summary · ↑↓ select · tab logs · j/k scroll"
+	}
 	return []string{
 		footerStyle.Render(help),
 		footerStyle.Render(fmt.Sprintf(" %d finished · %d failed", m.finished, m.failed)),

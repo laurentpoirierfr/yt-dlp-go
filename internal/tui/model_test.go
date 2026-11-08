@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -222,5 +223,57 @@ func TestPostProcessShownOnTask(t *testing.T) {
 	}
 	if !strings.Contains(view, "Fusion · terminé") {
 		t.Fatalf("finished postprocessor state missing:\n%s", view)
+	}
+}
+
+func TestFinalSummaryPersists(t *testing.T) {
+	m := New()
+	sized(m, 120, 40)
+	addJob(m, "a", "Réussie", "137")
+	m.Update(progressMsg(events.Progress{
+		Info: &infodict.InfoDict{ID: "a", Title: "Réussie"}, Filename: "ok.mp4",
+		Status: events.StatusFinished, Downloaded: 1234, Total: 1234,
+	}))
+	addJob(m, "b", "Ratée", "137")
+	m.Update(progressMsg(events.Progress{
+		Info: &infodict.InfoDict{ID: "b", Title: "Ratée"}, Filename: "ko.mp4",
+		Status: events.StatusError, Err: errors.New("boom"),
+	}))
+
+	_, cmd := m.Update(workDoneMsg{})
+	if cmd != nil {
+		t.Fatal("the final summary should stay on screen instead of auto-quitting")
+	}
+	if !m.done {
+		t.Fatal("model should be marked done")
+	}
+
+	view := m.View()
+	for _, want := range []string{
+		"Bilan", "terminé avec erreurs", "1/2 réussies", "boom", "ok.mp4",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("summary missing %q:\n%s", want, view)
+		}
+	}
+	if got := strings.Count(view, "\n") + 1; got != 40 {
+		t.Fatalf("view has %d lines, want 40", got)
+	}
+}
+
+func TestFinalSummaryNarrow(t *testing.T) {
+	m := New()
+	sized(m, 60, 24)
+	addJob(m, "a", "Vidéo", "137")
+	m.Update(workDoneMsg{})
+	view := m.View()
+	if !strings.Contains(view, "Bilan") {
+		t.Fatalf("summary missing on a narrow terminal:\n%s", view)
+	}
+	if strings.Contains(view, "Détail") {
+		t.Fatalf("detail pane should be replaced by the summary:\n%s", view)
+	}
+	if got := strings.Count(view, "\n") + 1; got != 24 {
+		t.Fatalf("view has %d lines, want 24", got)
 	}
 }
