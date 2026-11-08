@@ -19,6 +19,7 @@ import (
 type recordingSink struct {
 	mu       sync.Mutex
 	statuses []events.Status
+	progress []events.Progress
 	last     events.Progress
 }
 
@@ -26,6 +27,7 @@ func (r *recordingSink) Progress(p events.Progress) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.statuses = append(r.statuses, p.Status)
+	r.progress = append(r.progress, p)
 	r.last = p
 }
 func (r *recordingSink) PostProcess(events.PostProcess) {}
@@ -194,5 +196,82 @@ func TestHTTPDownloadResume(t *testing.T) {
 	got, _ := os.ReadFile(dest)
 	if string(got) != string(payload) {
 		t.Fatalf("got %q want %q", got, payload)
+	}
+}
+
+func TestHTTPDownloadFragments(t *testing.T) {
+	parts := []string{"abc", "defg", "hi"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var idx int
+		fmt.Sscanf(req.URL.Path, "/frag%d.bin", &idx)
+		if idx < 0 || idx >= len(parts) {
+			http.NotFound(w, req)
+			return
+		}
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(parts[idx])))
+		io.WriteString(w, parts[idx])
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "frag.bin")
+	sink := &recordingSink{}
+	d := NewHTTP(networking.NewClient(), options.DefaultOptions(), sink)
+
+	info := &infodict.InfoDict{ID: "frag", Filepath: dest}
+	f := infodict.Format{
+		Ext:             "bin",
+		FragmentBaseURL: srv.URL + "/",
+		Fragments: []infodict.Fragment{
+			{URL: "frag0.bin"}, {URL: "frag1.bin"}, {URL: "frag2.bin"},
+		},
+	}
+	if err := d.Download(info, []infodict.Format{f}); err != nil {
+		t.Fatalf("download: %v", err)
+	}
+
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(got) != "abcdefghi" {
+		t.Fatalf("content = %q want %q", got, "abcdefghi")
+	}
+
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	seen := map[int]bool{}
+	for _, p := range sink.progress {
+		if p.FragmentCount != 3 {
+			t.Fatalf("FragmentCount = %d want 3 (%+v)", p.FragmentCount, p)
+		}
+		if p.FragmentIndex > 0 {
+			seen[p.FragmentIndex] = true
+		}
+	}
+	for i := 1; i <= 3; i++ {
+		if !seen[i] {
+			t.Fatalf("fragment index %d never reported (seen %v)", i, seen)
+		}
+	}
+	if sink.last.Status != events.StatusFinished || sink.last.FragmentIndex != 3 {
+		t.Fatalf("last event = %+v, want finished on fragment 3/3", sink.last)
+	}
+	if sink.last.Downloaded != int64(len("abcdefghi")) {
+		t.Fatalf("downloaded = %d want %d", sink.last.Downloaded, len("abcdefghi"))
+	}
+}
+
+func TestResolveFragmentURL(t *testing.T) {
+	cases := []struct{ base, ref, want string }{
+		{"https://cdn.example/hls/index.m3u8", "seg1.ts", "https://cdn.example/hls/seg1.ts"},
+		{"https://cdn.example/hls/", "seg1.ts", "https://cdn.example/hls/seg1.ts"},
+		{"https://cdn.example/hls/", "https://other.example/x.ts", "https://other.example/x.ts"},
+		{"https://cdn.example/hls/", "", ""},
+	}
+	for _, c := range cases {
+		if got := resolveFragmentURL(c.base, c.ref); got != c.want {
+			t.Errorf("resolveFragmentURL(%q, %q) = %q, want %q", c.base, c.ref, got, c.want)
+		}
 	}
 }

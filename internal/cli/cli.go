@@ -149,9 +149,20 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 	}
 
 	// The TUI is used automatically for real downloads on an interactive
-	// terminal; --tui forces it, --no-tui (or -q) disables it.
-	useTUI := !opts.NoTUI && !opts.Quiet && !simulate && tui.Supported()
-	if useTUI {
+	// terminal; --tui can also force it via the controlling terminal, while
+	// --no-tui (or -q) disables it. Without any terminal we fall back to the
+	// plain renderer instead of crashing on a missing /dev/tty.
+	supported := tui.Supported()
+	hasTTY := false
+	if opts.TUI && !supported {
+		hasTTY = tui.HasTTY()
+	}
+	available := tuiAvailable(opts, supported, hasTTY)
+	if opts.TUI && !available {
+		fmt.Fprintln(os.Stderr, "WARNING: --tui requested but no terminal is available; using plain output")
+	}
+	if tuiEnabled(opts, simulate, available) {
+		tui.SetTheme(opts.Theme)
 		err := tui.Run(func(sink events.Sink) error {
 			ydl.SetSink(sink)
 			if code := process(); code != 0 {
@@ -166,6 +177,25 @@ func run(ies []extractor.IE, opts *options.Options, root *cobra.Command) int {
 		return 0
 	}
 	return process()
+}
+
+// tuiAvailable reports whether a usable terminal exists. Automatic detection
+// relies on stdout being a TTY; --tui additionally allows the controlling
+// terminal (/dev/tty) to be used when stdout is redirected.
+func tuiAvailable(opts *options.Options, supported, hasTTY bool) bool {
+	if supported {
+		return true
+	}
+	return opts.TUI && hasTTY
+}
+
+// tuiEnabled reports whether the interactive interface should run. It is off
+// in quiet/simulation modes and with --no-tui; otherwise it needs a terminal.
+func tuiEnabled(opts *options.Options, simulate, available bool) bool {
+	if opts.NoTUI || opts.Quiet || simulate {
+		return false
+	}
+	return available
 }
 
 func merge(info *infodict.InfoDict, opts *options.Options, sink events.Sink) {

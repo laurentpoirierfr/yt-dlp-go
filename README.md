@@ -163,11 +163,19 @@ plein écran (Bubble Tea) est affichée automatiquement. Elle occupe toute la
 hauteur du terminal et se compose de :
 
 - **En-tête** : résumé global à gauche (progression des tâches, volume total,
-  débit cumulé, temps écoulé) et **logo ASCII `YT-DLP` en haut à droite**.
+  débit cumulé, sparkline du débit, temps écoulé) et **logo ASCII `YT-DLP` en
+  haut à droite**.
 - **Tâches** : une ligne d'état + une barre de progression par téléchargement,
-  avec volume téléchargé/total, débit et ETA.
-- **Journal** : logs d'extraction et de post-traitement, défilables, qui
-  occupent l'espace restant.
+  avec volume téléchargé/total, débit, ETA, fragments (`frag 3/10`) et étape de
+  post-traitement (fusion, conversion audio, sous-titres).
+- **Détail** : sur un terminal assez large (≥ 88×18), la tâche sélectionnée est
+  détaillée à côté du journal : titre, format, résolution, durée, taille,
+  progression, débit, ETA, étape et fichier de sortie.
+- **Journal** : logs d'extraction et de post-traitement, défilables et
+  filtrables avec `/`.
+- **Bilan** : à la fin, un récapitulatif persistant (résultat, tâches réussies,
+  échecs et leurs erreurs, volume, durée, fichiers écrits) reste affiché
+  jusqu'à ce que vous quittiez.
 - **Pied de page** : compteurs (terminées / échouées) et rappel des raccourcis.
 
 ![Interface terminal de yt-dlp-go](./assets/terminal.png)
@@ -179,6 +187,12 @@ yt-dlp-go "URL"
 # Forcer l'interface (même si la détection automatique échoue)
 yt-dlp-go --tui "URL"
 
+# Choisir un thème (default, dracula, solarized, mono)
+yt-dlp-go --tui --theme dracula "URL"
+
+# Désactiver les couleurs (convention NO_COLOR)
+NO_COLOR=1 yt-dlp-go --tui "URL"
+
 # Désactiver l'interface : sortie classique, scripts, redirections
 yt-dlp-go --no-tui "URL"
 ```
@@ -189,17 +203,21 @@ Règles d'activation :
   terminal (TTY) ;
 - désactivée automatiquement si la sortie est redirigée/pipee (CI, fichiers),
   en mode simulation (`-s`, `-j`, `-J`, `-F`, `--get-*`) ou avec `-q`/`--quiet` ;
-- `--tui` force l'affichage, `--no-tui` le désactive.
+- `--tui` force l'affichage, `--no-tui` le désactive ; sans terminal
+  disponible, un avertissement est affiché et la sortie classique est utilisée.
 
 ### Raccourcis clavier
 
 | Touche | Action |
 | --- | --- |
-| `q`, `esc`, `ctrl+c` | Quitter |
-| `tab` | Basculer le focus vers les logs |
-| `j` / `k`, `↓` / `↑` | Défiler ligne à ligne |
+| `q`, `ctrl+c` | Quitter |
+| `esc` | Effacer le filtre, fermer l'aide, puis quitter |
+| `↑` / `↓`, `k` / `j` | Sélectionner une tâche (ou défiler les logs si `tab` est actif) |
+| `tab` | Basculer le focus entre les tâches et les logs |
 | `pgup` / `pgdn` | Défiler page à page |
 | `g` / `G` | Aller au début / à la fin |
+| `/` | Filtrer le journal (`entrée` applique, `esc` efface) |
+| `?` | Afficher / fermer l'aide |
 
 L'interface se ferme automatiquement peu après la fin du dernier
 téléchargement, avec un court délai pour lire le résultat.
@@ -454,7 +472,7 @@ Audio       -x/--extract-audio, --audio-format, --audio-quality,
             -k/--keep-video, --ffmpeg-location
 Sous-titres --write-subs, --write-auto-subs, --all-subs, --sub-langs,
             --sub-format, --convert-subs/--convert-subtitles, --list-subs
-Divers      -q/--quiet, -v/--verbose, --tui, --no-tui
+Divers      -q/--quiet, -v/--verbose, --tui, --no-tui, --theme
 ```
 
 Par défaut, la première erreur arrête le programme ; `-i/--ignore-errors`

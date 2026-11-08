@@ -39,6 +39,7 @@ type Options struct {
 	// Terminal interface (extension, not in yt-dlp)
 	TUI   bool
 	NoTUI bool
+	Theme string
 
 	// Error handling / control flow
 	IgnoreErrors    IgnoreErrorsMode
@@ -200,6 +201,7 @@ func DefaultOptions() *Options {
 	o := &Options{
 		Quiet:                       false,
 		NoWarnings:                  false,
+		Theme:                       "default",
 		IgnoreErrors:                IgnoreNone,
 		ListFormatsTable:            true,
 		SubtitlesFormat:             "best",
