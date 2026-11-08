@@ -53,8 +53,8 @@ type Model struct {
 	failed   int
 	done     bool
 	err      error
-	focusLog   bool
-	selected   int // index in jobs (most recent shown order? or absolute)
+	focusLog bool
+	selected int // index in jobs (most recent shown order? or absolute)
 
 	started time.Time
 }

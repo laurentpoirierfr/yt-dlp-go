@@ -17,6 +17,21 @@ func Supported() bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
+// HasTTY reports whether a controlling terminal can be opened, even when
+// stdout is redirected. It lets --tui force the interface when automatic
+// detection based on stdout fails.
+func HasTTY() bool {
+	if Supported() {
+		return true
+	}
+	f, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
+}
+
 // Run starts the TUI and executes work in a background goroutine. work
 // receives the model as its events.Sink; the TUI exits when work returns (or
 // when the user quits). It returns work's error, if any.
