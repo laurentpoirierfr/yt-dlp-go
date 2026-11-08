@@ -179,3 +179,48 @@ func TestSelectionClamped(t *testing.T) {
 		t.Fatalf("selectedJob = %v, want job c", got)
 	}
 }
+
+func TestFragmentProgressRendered(t *testing.T) {
+	m := New()
+	sized(m, 120, 40)
+	addJob(m, "a", "Vidéo", "137")
+	m.Update(progressMsg(events.Progress{
+		Info: &infodict.InfoDict{ID: "a", Title: "Vidéo"}, Filename: "a.mp4",
+		Status: events.StatusRunning, Downloaded: 750, Total: 1000,
+		FragmentIndex: 3, FragmentCount: 10,
+	}))
+	view := m.View()
+	if !strings.Contains(view, "frag 3/10") {
+		t.Fatalf("fragment progress missing from job line:\n%s", view)
+	}
+	if !strings.Contains(view, "Fragments") || !strings.Contains(view, "3/10") {
+		t.Fatalf("fragment progress missing from detail pane:\n%s", view)
+	}
+}
+
+func TestPostProcessShownOnTask(t *testing.T) {
+	m := New()
+	sized(m, 120, 40)
+	addJob(m, "a", "Vidéo", "137")
+	m.Update(postProcessMsg(events.PostProcess{
+		Info: &infodict.InfoDict{ID: "a"}, Name: "Merger", Status: events.StatusRunning,
+	}))
+	view := m.View()
+	if !strings.Contains(view, "Fusion…") {
+		t.Fatalf("running postprocessor missing from job line:\n%s", view)
+	}
+	if !strings.Contains(view, "Étape") || !strings.Contains(view, "Fusion · en cours") {
+		t.Fatalf("running postprocessor missing from detail pane:\n%s", view)
+	}
+
+	m.Update(postProcessMsg(events.PostProcess{
+		Info: &infodict.InfoDict{ID: "a"}, Name: "Merger", Status: events.StatusFinished,
+	}))
+	view = m.View()
+	if strings.Contains(view, "Fusion…") {
+		t.Fatalf("finished postprocessor should not look active:\n%s", view)
+	}
+	if !strings.Contains(view, "Fusion · terminé") {
+		t.Fatalf("finished postprocessor state missing:\n%s", view)
+	}
+}
