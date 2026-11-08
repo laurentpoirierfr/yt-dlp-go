@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -68,11 +69,17 @@ func orExt(e string) string {
 
 func (d *HTTPDownloader) downloadOne(info *infodict.InfoDict, f infodict.Format, dest string) error {
 	url := f.URL
-	if url == "" {
+	if url == "" && len(f.Fragments) == 0 {
 		return fmt.Errorf("no URL to download for format %q", f.FormatID)
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
+	}
+
+	// Fragmented formats (HLS/DASH) are downloaded segment by segment; each
+	// segment is appended to the destination file.
+	if len(f.Fragments) > 0 {
+		return d.downloadFragmented(info, f, dest)
 	}
 
 	cont := true
@@ -113,7 +120,7 @@ func (d *HTTPDownloader) downloadOne(info *infodict.InfoDict, f infodict.Format,
 		written, rerr := d.downloadSegment(info, url, file, dest, downloaded)
 		downloaded = written
 		if rerr == nil {
-			d.sink.Progress(progressEvent(info, dest, downloaded, downloaded, start, events.StatusFinished))
+			d.sink.Progress(progressEvent(info, dest, downloaded, downloaded, start, events.StatusFinished, 0, 0))
 			return nil
 		}
 		if attempt >= maxRetries || !isRetryable(rerr) {
@@ -125,6 +132,144 @@ func (d *HTTPDownloader) downloadOne(info *infodict.InfoDict, f infodict.Format,
 			Text:  fmt.Sprintf("[download] Got error: %v (retry %d of %d)", rerr, attempt+1, maxRetries),
 		})
 	}
+}
+
+// downloadFragmented downloads every fragment of f sequentially, appending it
+// to dest. Failures are retried from scratch, truncating the destination.
+func (d *HTTPDownloader) downloadFragmented(info *infodict.InfoDict, f infodict.Format, dest string) error {
+	maxRetries := d.opts.Retries
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
+	count := len(f.Fragments)
+	total := fragmentsTotal(f.Fragments)
+	start := time.Now()
+	var downloaded int64
+	for attempt := 0; ; attempt++ {
+		written, rerr := d.writeFragments(info, f, dest, total, start)
+		downloaded = written
+		if rerr == nil {
+			d.sink.Progress(progressEvent(info, dest, downloaded, downloaded, start, events.StatusFinished, count, count))
+			return nil
+		}
+		if attempt >= maxRetries || !isRetryable(rerr) {
+			d.emitError(info, dest, downloaded, rerr)
+			return rerr
+		}
+		d.sink.Log(events.Log{
+			Level: events.LevelWarning,
+			Text:  fmt.Sprintf("[download] Got error: %v (retry %d of %d)", rerr, attempt+1, maxRetries),
+		})
+	}
+}
+
+// writeFragments truncates dest and writes all fragments to it, emitting
+// fragment-aware progress events as it goes.
+func (d *HTTPDownloader) writeFragments(info *infodict.InfoDict, f infodict.Format, dest string, total int64, start time.Time) (int64, error) {
+	file, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	count := len(f.Fragments)
+	base := f.FragmentBaseURL
+	if base == "" {
+		base = f.URL
+	}
+	d.sink.Progress(events.Progress{
+		Info: info, Filename: dest, Status: events.StatusStarted,
+		Downloaded: 0, Total: total,
+		FragmentIndex: 1, FragmentCount: count,
+	})
+
+	var written int64
+	for i, frag := range f.Fragments {
+		u := resolveFragmentURL(base, frag.URL)
+		if u == "" {
+			return written, fmt.Errorf("fragment %d/%d has no URL", i+1, count)
+		}
+		n, ferr := d.writeFragment(info, u, file, dest, i+1, count, total, written, start)
+		written += n
+		if ferr != nil {
+			return written, ferr
+		}
+		d.sink.Progress(progressEvent(info, dest, written, total, start, events.StatusRunning, i+1, count))
+	}
+	return written, nil
+}
+
+// writeFragment fetches one fragment and appends its body to file.
+func (d *HTTPDownloader) writeFragment(info *infodict.InfoDict, fragmentURL string, file *os.File, dest string, index, count int, total, written int64, start time.Time) (int64, error) {
+	resp, err := d.client.Get(fragmentURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Close()
+
+	switch resp.StatusCode {
+	case 200, 206:
+	default:
+		return 0, fmt.Errorf("unexpected HTTP status %d while downloading fragment %d/%d", resp.StatusCode, index, count)
+	}
+
+	var n int64
+	buf := make([]byte, 256*1024)
+	last := time.Time{}
+	for {
+		r, rerr := resp.Body().Read(buf)
+		if r > 0 {
+			if _, werr := file.Write(buf[:r]); werr != nil {
+				return n, werr
+			}
+			n += int64(r)
+			now := time.Now()
+			if last.IsZero() || now.Sub(last) >= progressInterval {
+				last = now
+				d.sink.Progress(progressEvent(info, dest, written+n, total, start, events.StatusRunning, index, count))
+			}
+		}
+		if rerr == io.EOF {
+			return n, nil
+		}
+		if rerr != nil {
+			return n, rerr
+		}
+	}
+}
+
+// fragmentsTotal sums known fragment sizes, returning -1 when any is unknown.
+func fragmentsTotal(frags []infodict.Fragment) int64 {
+	var total int64
+	for _, fr := range frags {
+		if fr.Filesize <= 0 {
+			return -1
+		}
+		total += fr.Filesize
+	}
+	if total == 0 {
+		return -1
+	}
+	return total
+}
+
+// resolveFragmentURL resolves a fragment reference against its base URL.
+func resolveFragmentURL(base, ref string) string {
+	if ref == "" {
+		return ""
+	}
+	r, err := url.Parse(ref)
+	if err != nil {
+		return ref
+	}
+	if r.IsAbs() {
+		return ref
+	}
+	b, err := url.Parse(base)
+	if err != nil {
+		return ref
+	}
+	return b.ResolveReference(r).String()
 }
 
 // downloadSegment fetches url and appends the body - or the remaining part of
@@ -187,7 +332,7 @@ func (d *HTTPDownloader) downloadSegment(info *infodict.InfoDict, url string, fi
 			now := time.Now()
 			if last.IsZero() || now.Sub(last) >= progressInterval {
 				last = now
-				d.sink.Progress(progressEvent(info, dest, written, total, segStart, events.StatusRunning))
+				d.sink.Progress(progressEvent(info, dest, written, total, segStart, events.StatusRunning, 0, 0))
 			}
 		}
 		if rerr == io.EOF {
@@ -226,12 +371,13 @@ func totalSize(resp *networking.Response, offset int64) int64 {
 	return -1
 }
 
-func progressEvent(info *infodict.InfoDict, dest string, downloaded, total int64, start time.Time, status events.Status) events.Progress {
+func progressEvent(info *infodict.InfoDict, dest string, downloaded, total int64, start time.Time, status events.Status, fragIndex, fragCount int) events.Progress {
 	elapsed := time.Since(start)
 	p := events.Progress{
 		Info: info, Filename: dest, Status: status,
 		Downloaded: downloaded, Total: total,
 		Elapsed: elapsed, ETA: -1,
+		FragmentIndex: fragIndex, FragmentCount: fragCount,
 	}
 	if elapsed > 0 {
 		p.Speed = float64(downloaded) / elapsed.Seconds()

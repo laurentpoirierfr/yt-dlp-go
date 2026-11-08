@@ -37,6 +37,12 @@ type job struct {
 	err        error
 	info       *infodict.InfoDict
 	filename   string
+
+	fragmentIndex int
+	fragmentCount int
+
+	ppName   string
+	ppStatus events.Status
 }
 
 // Model is the Bubble Tea model.
@@ -121,6 +127,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case postProcessMsg:
 		p := events.PostProcess(msg)
+		if j := m.jobForInfo(p.Info); j != nil {
+			j.ppName = p.Name
+			j.ppStatus = p.Status
+		}
 		switch p.Status {
 		case events.StatusStarted:
 			m.appendLogStyle(dimStyle, fmt.Sprintf("[%s] processing…", p.Name))
@@ -226,6 +236,8 @@ func (m *Model) applyProgress(p events.Progress) {
 	j.total = p.Total
 	j.speed = p.Speed
 	j.eta = p.ETA
+	j.fragmentIndex = p.FragmentIndex
+	j.fragmentCount = p.FragmentCount
 	if p.Info != nil {
 		j.info = p.Info
 	}
@@ -277,6 +289,18 @@ func (m *Model) jobByKey(key string) (*job, bool) {
 		return nil, false
 	}
 	return m.jobs[i], true
+}
+
+// jobForInfo looks up the job a post-processing event belongs to.
+func (m *Model) jobForInfo(info *infodict.InfoDict) *job {
+	if info == nil || info.ID == "" {
+		return nil
+	}
+	j, ok := m.jobByKey(info.ID)
+	if !ok {
+		return nil
+	}
+	return j
 }
 
 func (m *Model) appendLogStyle(style lipgloss.Style, text string) {
@@ -508,11 +532,17 @@ func (m *Model) jobStats(j *job) string {
 	} else {
 		parts = append(parts, utils.FormatBytes(j.downloaded))
 	}
+	if j.fragmentCount > 0 && j.fragmentIndex > 0 {
+		parts = append(parts, fmt.Sprintf("frag %d/%d", j.fragmentIndex, j.fragmentCount))
+	}
 	if j.speed > 0 && j.status == events.StatusRunning {
 		parts = append(parts, utils.FormatBytes(int64(j.speed))+"/s")
 	}
 	if j.eta >= 0 && j.status == events.StatusRunning {
 		parts = append(parts, "ETA "+utils.FormatClock(j.eta))
+	}
+	if j.ppName != "" && (j.ppStatus == events.StatusStarted || j.ppStatus == events.StatusRunning) {
+		parts = append(parts, postProcessLabel(j.ppName)+"…")
 	}
 	if j.status == events.StatusError {
 		parts = append(parts, errStyle.Render("error"))
@@ -619,11 +649,17 @@ func (m *Model) detailFields(j *job) [][2]string {
 	}
 	fields = append(fields, [2]string{"Taille", size})
 	fields = append(fields, [2]string{"Progrès", fmt.Sprintf("%.0f%%", j.percent*100)})
+	if j.fragmentCount > 0 {
+		fields = append(fields, [2]string{"Fragments", fmt.Sprintf("%d/%d", j.fragmentIndex, j.fragmentCount)})
+	}
 	if j.speed > 0 && j.status == events.StatusRunning {
 		fields = append(fields, [2]string{"Débit", utils.FormatBytes(int64(j.speed)) + "/s"})
 	}
 	if j.status == events.StatusRunning && j.eta >= 0 {
 		fields = append(fields, [2]string{"ETA", utils.FormatClock(j.eta)})
+	}
+	if j.ppName != "" {
+		fields = append(fields, [2]string{"Étape", postProcessLabel(j.ppName) + " · " + statusLabel(j.ppStatus)})
 	}
 	if j.filename != "" {
 		fields = append(fields, [2]string{"Fichier", j.filename})
@@ -675,6 +711,21 @@ func statusLabel(s events.Status) string {
 		return "échec"
 	}
 	return "?"
+}
+
+// postProcessLabel translates the postprocessor names shown by the pipeline.
+func postProcessLabel(name string) string {
+	switch name {
+	case "Merger":
+		return "Fusion"
+	case "AudioConvert":
+		return "Conversion audio"
+	case "SubtitlesConvertor":
+		return "Sous-titres"
+	case "MoveFiles":
+		return "Déplacement"
+	}
+	return name
 }
 
 func formatDescription(info *infodict.InfoDict) string {
