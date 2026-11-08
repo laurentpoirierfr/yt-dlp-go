@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/events"
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
@@ -408,7 +409,9 @@ func (m *Model) refreshLogs() {
 		q := strings.ToLower(m.filter)
 		lines = make([]string, 0, len(m.logs))
 		for _, line := range m.logs {
-			if strings.Contains(strings.ToLower(line), q) {
+			// Match against the visible text only: escape sequences contain
+			// letters (e.g. "m") that would create false positives.
+			if strings.Contains(strings.ToLower(ansi.Strip(line)), q) {
 				lines = append(lines, line)
 			}
 		}

@@ -318,6 +318,22 @@ func TestLogFilter(t *testing.T) {
 	}
 }
 
+func TestLogFilterIgnoresANSI(t *testing.T) {
+	m := New()
+	sized(m, 120, 40)
+	m.logs = []string{"\x1b[31mhello\x1b[0m", "plain world"}
+	m.filter = "31"
+	m.refreshLogs()
+	if strings.Contains(m.vp.View(), "hello") {
+		t.Fatalf("escape sequence matched as visible text:\n%s", m.vp.View())
+	}
+	m.filter = "hello"
+	m.refreshLogs()
+	if !strings.Contains(m.vp.View(), "hello") {
+		t.Fatalf("visible text should match:\n%s", m.vp.View())
+	}
+}
+
 func TestHelpToggle(t *testing.T) {
 	m := New()
 	sized(m, 120, 40)
