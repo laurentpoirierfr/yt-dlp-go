@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/events"
+	"github.com/laurentpoirierfr/yt-dlp-go/internal/infodict"
 	"github.com/laurentpoirierfr/yt-dlp-go/internal/utils"
 )
 
@@ -34,6 +35,8 @@ type job struct {
 	eta        time.Duration
 	status     events.Status
 	err        error
+	info       *infodict.InfoDict
+	filename   string
 }
 
 // Model is the Bubble Tea model.
@@ -223,6 +226,12 @@ func (m *Model) applyProgress(p events.Progress) {
 	j.total = p.Total
 	j.speed = p.Speed
 	j.eta = p.ETA
+	if p.Info != nil {
+		j.info = p.Info
+	}
+	if p.Filename != "" {
+		j.filename = p.Filename
+	}
 	if p.Total > 0 {
 		j.percent = float64(p.Downloaded) / float64(p.Total)
 	} else if p.Status == events.StatusFinished {
@@ -354,7 +363,7 @@ func (m *Model) View() string {
 	var lines []string
 	lines = append(lines, m.viewHeader()...)
 	lines = append(lines, m.viewJobs()...)
-	lines = append(lines, m.viewLogs()...)
+	lines = append(lines, m.viewBody()...)
 	lines = append(lines, m.viewFooter()...)
 	// Guarantee the view fills the whole terminal exactly.
 	for len(lines) < m.height {
@@ -428,17 +437,31 @@ func (m *Model) viewJobs() []string {
 		lines = append(lines, dimStyle.Render("  Preparing…"))
 	}
 
-	// Each job takes 2 lines; show the most recent ones that fit.
+	// Each job takes 2 lines. Show the most recent ones that fit, scrolling so
+	// the selected job stays visible.
 	capacity := h / 2
 	if capacity < 1 {
 		capacity = 1
 	}
-	shown := m.jobs
-	if len(shown) > capacity {
-		shown = shown[len(shown)-capacity:]
+	start := 0
+	if len(m.jobs) > capacity {
+		start = len(m.jobs) - capacity
 	}
-	for _, j := range shown {
-		lines = append(lines, m.viewJob(j)...)
+	if m.selected < start {
+		start = m.selected
+	}
+	if m.selected >= start+capacity {
+		start = m.selected - capacity + 1
+	}
+	if start < 0 {
+		start = 0
+	}
+	end := start + capacity
+	if end > len(m.jobs) {
+		end = len(m.jobs)
+	}
+	for i := start; i < end; i++ {
+		lines = append(lines, m.viewJob(m.jobs[i], i == m.selected)...)
 	}
 	for len(lines) < h {
 		lines = append(lines, "")
@@ -449,24 +472,32 @@ func (m *Model) viewJobs() []string {
 	return lines
 }
 
-func (m *Model) viewJob(j *job) []string {
+func (m *Model) viewJob(j *job, selected bool) []string {
+	cursor := " "
+	if selected {
+		cursor = focusedStyle.Render("▸")
+	}
 	marker := " "
 	switch j.status {
+	case events.StatusRunning:
+		marker = dimStyle.Render("•")
 	case events.StatusFinished:
 		marker = okStyle.Render("✔")
 	case events.StatusError:
 		marker = errStyle.Render("✘")
 	}
-	title := "  " + j.title
-	maxW := m.width - 4
+	title := j.title
+	maxW := m.width - 5
 	if maxW < 4 {
 		maxW = 4
 	}
-	if len([]rune(title)) > maxW {
-		title = string([]rune(title)[:maxW])
+	title = truncateRunes(title, maxW)
+	titleStyle := jobTitleStyle
+	if selected {
+		titleStyle = focusedStyle.Bold(true)
 	}
-	line1 := fmt.Sprintf("%s %s", marker, jobTitleStyle.Render(title))
-	line2 := "  " + j.bar.ViewAs(j.percent) + "  " + m.jobStats(j)
+	line1 := fmt.Sprintf("%s%s %s", cursor, marker, titleStyle.Render(title))
+	line2 := "   " + j.bar.ViewAs(j.percent) + "  " + m.jobStats(j)
 	return []string{line1, line2}
 }
 
@@ -489,13 +520,54 @@ func (m *Model) jobStats(j *job) string {
 	return dimStyle.Render(strings.Join(parts, "  "))
 }
 
-func (m *Model) viewLogs() []string {
+// showDetail reports whether there is room for the side-by-side detail pane.
+func (m *Model) showDetail() bool {
+	return m.width >= 88 && m.height >= 18
+}
+
+// viewBody renders the lower region: full-width logs by default, or a detail
+// pane next to the logs when the terminal is wide enough.
+func (m *Model) viewBody() []string {
 	h := m.logsHeightActual()
-	m.vp.Width = m.width - 2
+	if !m.showDetail() {
+		return m.viewLogs(m.width-2, h)
+	}
+	detailW := m.width * 2 / 5
+	if detailW < 28 {
+		detailW = 28
+	}
+	if detailW > 48 {
+		detailW = 48
+	}
+	sep := " │ "
+	logW := m.width - detailW - len([]rune(sep))
+	if logW < 20 {
+		return m.viewLogs(m.width-2, h)
+	}
+	details := m.viewDetails(detailW, h)
+	logs := m.viewLogs(logW, h)
+	sepStr := dimStyle.Render(sep)
+	lines := make([]string, 0, h)
+	for i := 0; i < h; i++ {
+		var d, l string
+		if i < len(details) {
+			d = details[i]
+		}
+		if i < len(logs) {
+			l = logs[i]
+		}
+		lines = append(lines, lipgloss.NewStyle().Width(detailW).Render(d)+sepStr+l)
+	}
+	return lines
+}
+
+func (m *Model) viewLogs(w, h int) []string {
+	m.vp.Width = w
 	m.vp.Height = h - 1
-	label := dimStyle.Render(" Logs ")
+	labelText := " Logs "
+	label := dimStyle.Render(labelText)
 	if m.focusLog {
-		label = focusedStyle.Render(" Logs ")
+		label = focusedStyle.Render(labelText)
 	}
 	lines := []string{label}
 	lines = append(lines, strings.Split(m.vp.View(), "\n")...)
@@ -508,8 +580,151 @@ func (m *Model) viewLogs() []string {
 	return lines
 }
 
+func (m *Model) viewDetails(w, h int) []string {
+	lines := []string{dimStyle.Render(" Détail ")}
+	j := m.selectedJob()
+	if j != nil {
+		for _, f := range m.detailFields(j) {
+			if len(lines) >= h {
+				break
+			}
+			lines = append(lines, m.detailLine(w, f[0], f[1]))
+		}
+	}
+	for len(lines) < h {
+		lines = append(lines, "")
+	}
+	if len(lines) > h {
+		lines = lines[:h]
+	}
+	return lines
+}
+
+func (m *Model) detailFields(j *job) [][2]string {
+	fields := [][2]string{{"Titre", j.title}}
+	if j.info != nil {
+		if f := formatDescription(j.info); f != "" {
+			fields = append(fields, [2]string{"Format", f})
+		}
+		if res := resolutionOf(j.info); res != "" {
+			fields = append(fields, [2]string{"Résolution", res})
+		}
+		if j.info.DurationString != "" {
+			fields = append(fields, [2]string{"Durée", j.info.DurationString})
+		}
+	}
+	size := utils.FormatBytes(j.downloaded)
+	if j.total > 0 {
+		size = fmt.Sprintf("%s / %s", utils.FormatBytes(j.downloaded), utils.FormatBytes(j.total))
+	}
+	fields = append(fields, [2]string{"Taille", size})
+	fields = append(fields, [2]string{"Progrès", fmt.Sprintf("%.0f%%", j.percent*100)})
+	if j.speed > 0 && j.status == events.StatusRunning {
+		fields = append(fields, [2]string{"Débit", utils.FormatBytes(int64(j.speed)) + "/s"})
+	}
+	if j.status == events.StatusRunning && j.eta >= 0 {
+		fields = append(fields, [2]string{"ETA", utils.FormatClock(j.eta)})
+	}
+	if j.filename != "" {
+		fields = append(fields, [2]string{"Fichier", j.filename})
+	}
+	fields = append(fields, [2]string{"Statut", statusLabel(j.status)})
+	if j.err != nil {
+		fields = append(fields, [2]string{"Erreur", j.err.Error()})
+	}
+	return fields
+}
+
+func (m *Model) detailLine(w int, key, val string) string {
+	const keyW = 10
+	// One column of padding after the label, plus a margin so values never
+	// touch the separator between the two panes.
+	avail := w - keyW - 2
+	if avail < 4 {
+		avail = 4
+	}
+	style := lipgloss.NewStyle()
+	if key == "Erreur" {
+		style = errStyle
+	}
+	return dimStyle.Render(padRight(key, keyW)) + " " + style.Render(truncateRunes(val, avail))
+}
+
+func (m *Model) selectedJob() *job {
+	if len(m.jobs) == 0 {
+		return nil
+	}
+	if m.selected < 0 {
+		m.selected = 0
+	}
+	if m.selected >= len(m.jobs) {
+		m.selected = len(m.jobs) - 1
+	}
+	return m.jobs[m.selected]
+}
+
+func statusLabel(s events.Status) string {
+	switch s {
+	case events.StatusStarted:
+		return "démarrage"
+	case events.StatusRunning:
+		return "en cours"
+	case events.StatusFinished:
+		return "terminé"
+	case events.StatusError:
+		return "échec"
+	}
+	return "?"
+}
+
+func formatDescription(info *infodict.InfoDict) string {
+	f := info.Format
+	if f == "" {
+		f = info.FormatID
+	}
+	if info.Ext != "" && !strings.Contains(f, info.Ext) {
+		if f != "" {
+			f += " "
+		}
+		f += "(" + info.Ext + ")"
+	}
+	return f
+}
+
+func resolutionOf(info *infodict.InfoDict) string {
+	if info.Resolution != "" {
+		return info.Resolution
+	}
+	if info.Width > 0 && info.Height > 0 {
+		return fmt.Sprintf("%dx%d", info.Width, info.Height)
+	}
+	if info.Height > 0 {
+		return fmt.Sprintf("%dp", info.Height)
+	}
+	return ""
+}
+
+func padRight(s string, n int) string {
+	r := []rune(s)
+	if len(r) >= n {
+		return string(r[:n])
+	}
+	return s + strings.Repeat(" ", n-len(r))
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	if n <= 1 {
+		return string(r[:n])
+	}
+	return string(r[:n-1]) + "…"
+}
+
 func (m *Model) viewFooter() []string {
-	help := " q quit · tab focus logs · j/k scroll · g/G top/bottom"
+	help := " q quit · ↑↓ select · tab logs · j/k scroll · g/G top/bottom"
 	return []string{
 		footerStyle.Render(help),
 		footerStyle.Render(fmt.Sprintf(" %d finished · %d failed", m.finished, m.failed)),
